@@ -1,0 +1,48 @@
+# Minimal test dashboard - use this to verify cards work
+title: Test Dashboard
+views:
+  - title: Test
+    path: test
+    cards:
+      # Test 1: Basic card (should always work)
+      - type: markdown
+        content: |
+          # Dashboard Test
+          If you see this, basic cards work.
+
+      # Test 2: Button card (requires HACS button-card)
+      - type: custom:button-card
+        name: Button Card Test
+        icon: mdi:check
+        styles:
+          card:
+            - background: '#2c292a'
+            - border-radius: 16px
+          icon:
+            - color: '#eac578'
+          name:
+            - color: white
+
+      # Test 3: Layout card (requires HACS layout-card)
+      - type: custom:layout-card
+        layout_type: grid
+        layout:
+          grid-template-columns: 1fr 1fr
+          grid-gap: 16px
+        cards:
+          - type: markdown
+            content: "**Left column** - layout-card works!"
+          - type: markdown
+            content: "**Right column** - layout-card works!"
+
+      # Test 4: Picture element (tests image loading)
+      - type: picture-elements
+        image: /local/assets/house-normal-night.jpg
+        elements:
+          - type: state-label
+            entity: weather.forecast_home
+            style:
+              top: 50%
+              left: 50%
+              color: white
+              font-size: 24px

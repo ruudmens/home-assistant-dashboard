@@ -1,0 +1,581 @@
+# Home Scenes
+# These scenes control the ambiance and lighting throughout the house.
+#
+# Entity IDs below are placeholders (kitchen_spot_1, sofa_floor_lamp, etc.)
+# — rename them to match your own lights, or find-and-replace them across
+# this file, automations.yaml, and the dashboards to match your setup.
+
+# Sleep Mode - All indoor lights off, outdoor/garage lights remain unchanged
+- name: Sleep Mode
+  entities:
+    # Scene trackers — reset all active-scene flags
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'off'
+
+    # Hallway lights
+    light.entrance: "off"
+    light.hall: "off"
+
+    # Living room lights
+    light.media_cabinet: "off"
+    light.sofa_floor_lamp: "off"
+    light.floor_lamp_3: "off"
+    light.floor_lamp_1: "off"
+    light.floor_lamp_2: "off"
+    light.window_floor_lamp: "off"
+
+    # Kitchen lights
+    light.coffee_corner: "off"
+    light.kitchen_spot_1: "off"
+    light.kitchen_pendant_2: "off"
+    light.kitchen_spot_2: "off"
+    light.kitchen_pendant_1: "off"
+    light.kitchen_spot_3: "off"
+
+    # Dining room lights
+    light.dining_table: "off"
+    light.kitchen_led_strip_1: "off"
+    light.kitchen_led_strip_2: "off"
+    light.dining_cabinet: "off"
+    switch.cabinet_accent_light: "off"
+
+    # Family room lights
+    light.family_room: "off"
+    light.corridor: "off"
+
+# Lights On - All indoor lights at modest brightness (50%)
+- name: Lights On
+  entities:
+    # Scene trackers — reset all active-scene flags
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'off'
+
+    # Hallway lights - modest brightness
+    light.entrance:
+      state: "on"
+      brightness: 100
+    light.hall:
+      state: "on"
+      brightness: 100
+
+    # Living room lights - warm and welcoming
+    light.media_cabinet:
+      state: "on"
+      brightness: 25
+    light.sofa_floor_lamp:
+      state: "on"
+      brightness: 120
+    light.floor_lamp_3:
+      state: "on"
+      brightness: 120
+      color_temp: 369
+    light.floor_lamp_1:
+      state: "on"
+      brightness: 120
+      color_temp: 369
+    light.floor_lamp_2:
+      state: "on"
+      brightness: 120
+      color_temp: 369
+    light.window_floor_lamp:
+      state: "on"
+      brightness: 70
+
+    # Kitchen lights - normal
+    light.coffee_corner:
+      state: "on"
+      brightness: 40
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+
+    # Dining room lights - balanced
+    light.dining_table:
+      state: "on"
+      brightness: 80
+    light.kitchen_led_strip_1:
+      state: "on"
+      brightness: 30
+    light.kitchen_led_strip_2:
+      state: "on"
+      brightness: 30
+    light.dining_cabinet:
+      state: "on"
+      brightness: 100
+      color_temp: 457
+    switch.cabinet_accent_light:
+      state: "on"
+
+# Morning Lights On - Same as Lights On but without Family Room and Corridor
+# Used by the 07:00 morning automation so those lights can be brought on
+# separately on the weekday staggered schedule without flashing them on
+# and immediately off.
+- name: Morning Lights On
+  entities:
+    # Scene trackers
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'off'
+
+    # Hallway lights
+    light.entrance:
+      state: "on"
+      brightness: 140
+    light.hall:
+      state: "on"
+      brightness: 140
+
+    # Living room lights
+    light.media_cabinet:
+      state: "on"
+      brightness: 25
+    light.sofa_floor_lamp:
+      state: "on"
+      brightness: 140
+    light.floor_lamp_3:
+      state: "on"
+      brightness: 140
+      color_temp: 369
+    light.floor_lamp_1:
+      state: "on"
+      brightness: 140
+      color_temp: 369
+    light.floor_lamp_2:
+      state: "on"
+      brightness: 140
+      color_temp: 369
+    light.window_floor_lamp:
+      state: "on"
+      brightness: 100
+
+    # Kitchen lights
+    light.coffee_corner:
+      state: "on"
+      brightness: 40
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 40
+      color_temp: 368
+
+    # Dining room lights
+    light.dining_table:
+      state: "on"
+      brightness: 70
+    light.kitchen_led_strip_1:
+      state: "on"
+      brightness: 51
+    light.kitchen_led_strip_2:
+      state: "on"
+      brightness: 51
+    light.dining_cabinet:
+      state: "on"
+      brightness: 100
+      color_temp: 457
+    switch.cabinet_accent_light:
+      state: "on"
+
+# Lights On Cooking - Same as Lights On but kitchen lights stay at Cooking
+# Mode brightness. Used by lux-based automations when Cooking Mode is
+# active so the boost is not overridden.
+- name: Lights On Cooking
+  entities:
+    # Scene trackers — cooking stays on, others off
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'on'
+
+    # Hallway lights
+    light.entrance:
+      state: "on"
+      brightness: 150
+    light.hall:
+      state: "on"
+      brightness: 150
+
+    # Living room lights
+    light.media_cabinet:
+      state: "on"
+      brightness: 25
+    light.sofa_floor_lamp:
+      state: "on"
+      brightness: 160
+    light.floor_lamp_3:
+      state: "on"
+      brightness: 160
+      color_temp: 369
+    light.floor_lamp_1:
+      state: "on"
+      brightness: 160
+      color_temp: 369
+    light.floor_lamp_2:
+      state: "on"
+      brightness: 160
+      color_temp: 369
+    light.window_floor_lamp:
+      state: "on"
+      brightness: 120
+
+    # Kitchen lights — at Cooking Mode brightness
+    light.coffee_corner:
+      state: "on"
+      brightness: 100
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+
+    # Dining room lights
+    light.dining_table:
+      state: "on"
+      brightness: 80
+    light.kitchen_led_strip_1:
+      state: "on"
+      brightness: 51
+    light.kitchen_led_strip_2:
+      state: "on"
+      brightness: 51
+    light.dining_cabinet:
+      state: "on"
+      brightness: 127
+      color_temp: 457
+    switch.cabinet_accent_light:
+      state: "on"
+
+# Cozy Mode - Dimmed lights in living room, kitchen, and dining area for relaxation
+- name: Cozy Mode
+  entities:
+    # Scene trackers
+    input_boolean.scene_cozy: 'on'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'off'
+
+    # Hallway lights - keep at normal
+    light.entrance:
+      state: "on"
+      brightness: 70
+    light.hall:
+      state: "on"
+      brightness: 70
+
+    # Living room lights - dimmed and warm
+    light.media_cabinet:
+      state: "on"
+      brightness: 25
+    light.sofa_floor_lamp:
+      state: "on"
+      brightness: 40
+    light.floor_lamp_3:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.floor_lamp_1:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.floor_lamp_2:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.window_floor_lamp:
+      state: "on"
+      brightness: 20
+
+    # Kitchen lights - dimmed
+    light.coffee_corner:
+      state: "on"
+      brightness: 40
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 40
+      color_temp: 400
+
+    # Dining room lights - soft and intimate
+    light.dining_table:
+      state: "on"
+      brightness: 40
+    light.kitchen_led_strip_1:
+      state: "on"
+      brightness: 25
+    light.kitchen_led_strip_2:
+      state: "on"
+      brightness: 25
+    light.dining_cabinet:
+      state: "on"
+      brightness: 76
+      color_temp: 457
+
+# Gameboard Mode - Dining table bright for games, kitchen slightly dimmed
+- name: Gameboard Mode
+  entities:
+    # Scene trackers
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'on'
+    input_boolean.scene_cooking: 'off'
+
+    # Hallway lights - keep at normal
+    light.entrance:
+      state: "on"
+      brightness: 150
+    light.hall:
+      state: "on"
+      brightness: 150
+
+    # Living room lights - moderate
+    light.media_cabinet:
+      state: "on"
+      brightness: 50
+    light.sofa_floor_lamp:
+      state: "on"
+      brightness: 153
+    light.floor_lamp_3:
+      state: "on"
+      brightness: 153
+      color_temp: 369
+    light.floor_lamp_1:
+      state: "on"
+      brightness: 153
+      color_temp: 369
+    light.floor_lamp_2:
+      state: "on"
+      brightness: 153
+      color_temp: 369
+    light.window_floor_lamp:
+      state: "on"
+      brightness: 100
+
+    # Kitchen lights - dimmed for ambiance
+    light.coffee_corner:
+      state: "on"
+      brightness: 100
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 100
+      color_temp: 368
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 100
+      color_temp: 368
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 100
+      color_temp: 368
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 100
+      color_temp: 368
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 100
+      color_temp: 368
+
+    # Dining room lights - BRIGHT for gaming (70%)
+    light.dining_table:
+      state: "on"
+      brightness: 160
+    light.kitchen_led_strip_1:
+      state: "on"
+      brightness: 120
+    light.kitchen_led_strip_2:
+      state: "on"
+      brightness: 120
+    light.dining_cabinet:
+      state: "on"
+      brightness: 178
+      color_temp: 300
+
+# Cooking Mode - kitchen lights at full brightness for cooking (18:00-19:30)
+- name: Cooking Mode
+  entities:
+    # Scene trackers
+    input_boolean.scene_cozy: 'off'
+    input_boolean.scene_gameboard: 'off'
+    input_boolean.scene_cooking: 'on'
+
+    # Kitchen lights — full brightness for cooking
+    light.coffee_corner:
+      state: "on"
+      brightness: 100
+    light.kitchen_spot_1:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_spot_2:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_spot_3:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_pendant_1:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+    light.kitchen_pendant_2:
+      state: "on"
+      brightness: 120
+      color_temp: 368
+
+# ── Outdoor Lights Scenes ────────────────────────────────────────────────
+
+# Awake: starts 30 min before sunset, until 23:00 — house spots + garage at 50%
+- name: Outdoor Awake
+  entities:
+    light.front_door_wall:
+      state: "on"
+      brightness: 128
+    light.outdoor_spot_1:
+      state: "on"
+      brightness: 128
+    light.living_room_wall:
+      state: "on"
+      brightness: 128
+    light.master_bedroom_outdoor_wall:
+      state: "on"
+      brightness: 128
+    light.laundry_wall:
+      state: "on"
+      brightness: 128
+    light.exterior_spot:
+      state: "on"
+      brightness: 128
+    light.carport_light_0:
+      state: "on"
+      brightness: 128
+
+# Sleep: 23:00 until 07:00 — house spots 25%, one wall light off, master bedroom 10%, garage 25%
+- name: Outdoor Sleep
+  entities:
+    light.front_door_wall:
+      state: "on"
+      brightness: 64
+    light.outdoor_spot_1: "off"
+    light.living_room_wall:
+      state: "on"
+      brightness: 64
+    light.master_bedroom_outdoor_wall:
+      state: "on"
+      brightness: 25
+    light.laundry_wall:
+      state: "on"
+      brightness: 64
+    light.exterior_spot:
+      state: "on"
+      brightness: 64
+    light.carport_light_0:
+      state: "on"
+      brightness: 64
+
+# Morning: 07:00 until sunrise+30 min (only when still dark)
+# House spots 50%, laundry wall 70%, garage 70%, carport 25%
+- name: Outdoor Morning
+  entities:
+    light.front_door_wall:
+      state: "on"
+      brightness: 128
+    light.outdoor_spot_1:
+      state: "on"
+      brightness: 128
+    light.living_room_wall:
+      state: "on"
+      brightness: 128
+    light.master_bedroom_outdoor_wall:
+      state: "on"
+      brightness: 128
+    light.laundry_wall:
+      state: "on"
+      brightness: 178
+    light.exterior_spot:
+      state: "on"
+      brightness: 128
+    light.carport_light_0:
+      state: "on"
+      brightness: 178
+    light.carport_light_1:
+      state: "on"
+      brightness: 64
+
+# Afternoon: winter carport only, 15:00-19:00 when dark — carport 25%
+- name: Outdoor Afternoon
+  entities:
+    light.carport_light_1:
+      state: "on"
+      brightness: 64
+
+
+# Family Room Mode - family room and corridor at 50% for casual use
+- name: Family Room Lights On
+  entities:
+    light.family_room:
+      state: "on"
+      brightness: 70
+    light.corridor:
+      state: "on"
+      brightness: 40

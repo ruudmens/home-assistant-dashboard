@@ -1,0 +1,16 @@
+# Rest commands used to turn the hallway wall display's screen on/off.
+# This example targets a Shelly device's RPC API (Ui.Screen.Set) — adjust
+# the payload if you're using a different wall-panel/tablet controller.
+wall_display_screen_on:
+  url: !secret wall_display_rpc_url
+  method: POST
+  headers:
+    Content-Type: application/json
+  payload: '{"method":"Ui.Screen.Set","params":{"on":true}}'
+
+wall_display_screen_off:
+  url: !secret wall_display_rpc_url
+  method: POST
+  headers:
+    Content-Type: application/json
+  payload: '{"method":"Ui.Screen.Set","params":{"on":false}}'

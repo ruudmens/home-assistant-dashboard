@@ -1,0 +1,215 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Configuration.yaml snippet
+#
+# This is NOT a full configuration.yaml — it's the block of config that
+# powers the dashboards and the automated plant-watering / lawn-mower
+# rain logic. Merge the relevant sections into your own configuration.yaml.
+#
+# Replace every placeholder marked with <...> before using this.
+# ─────────────────────────────────────────────────────────────────────────
+
+lovelace:
+  mode: storage
+  dashboards:
+    home-tablet:
+      mode: yaml
+      title: Home
+      icon: mdi:tablet
+      show_in_sidebar: true
+      filename: dashboards/home_dashboard.yaml
+    garage-tablet:
+      mode: yaml
+      title: Garage
+      icon: mdi:garage
+      show_in_sidebar: true
+      filename: dashboards/garage_dashboard.yaml
+    mobile-remote:
+      mode: yaml
+      title: Remote
+      icon: mdi:cellphone
+      show_in_sidebar: true
+      filename: dashboards/mobile_remote.yaml
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+rest_command: !include rest_commands.yaml
+
+# ── Scene tracker helpers ─────────────────────────────────────────────────
+# One input_boolean per named scene. Each scene turns its own on and all
+# others off, so dashboards and automations can always read which scene is
+# active. When adding a new scene: add its boolean here, set it 'on' in
+# that scene, and add 'off' for it in every other scene's entity list.
+input_datetime:
+  holiday_start:
+    name: "Holiday: Start Date"
+    has_date: true
+    has_time: false
+    icon: mdi:calendar-start
+  holiday_end:
+    name: "Holiday: End Date"
+    has_date: true
+    has_time: false
+    icon: mdi:calendar-end
+  # ── Robot mower rain-skip gate ────────────────────────────────────────
+  # Stores when HA should re-enable the mower's native schedule after a
+  # rain-triggered skip.
+  mower_reenable_at:
+    name: "Mower: Re-enable schedule at"
+    has_date: true
+    has_time: true
+    icon: mdi:calendar-clock
+
+input_boolean:
+  scene_cozy:
+    name: "Scene: Cozy Mode"
+    icon: mdi:sofa
+  scene_gameboard:
+    name: "Scene: Gameboard Mode"
+    icon: mdi:dice-multiple
+  scene_cooking:
+    name: "Scene: Cooking Mode"
+    icon: mdi:chef-hat
+  # ── Robot mower rain-skip gate ────────────────────────────────────────
+  # True while HA has suppressed the mower's native schedule due to
+  # recent rain.
+  mower_schedule_suppressed:
+    name: "Mower: Schedule suppressed by HA"
+    icon: mdi:robot-mower
+
+input_number:
+  irrigation_threshold:
+    name: "Soil moisture threshold (irrigate below)"
+    min: -30
+    max: 0
+    step: 0.5
+    initial: -12
+    unit_of_measurement: "mm"
+    icon: mdi:water-minus
+
+# Time and date sensors used by the tablet dashboards
+sensor:
+  - platform: time_date
+    display_options:
+      - 'time'
+      - 'date'
+
+# Template sensors
+template:
+  # ── Tibber electricity price sensor ───────────────────────────────────
+  # Replace with your own price/energy integration if you don't use Tibber.
+  - trigger:
+      - trigger: time
+        at: "06:00:00"
+      - trigger: time
+        at: "14:00:00"
+      - trigger: homeassistant
+        event: start
+    action:
+      - action: tibber.get_prices
+        data:
+          end: "{{ (now() + timedelta(days=1)).strftime('%Y-%m-%d 23:59:59') }}"
+        response_variable: tomorrow_price
+    sensor:
+      - name: tibber_prices
+        unique_id: tibber_prices
+        state: >
+          {% set key = tomorrow_price['prices'] | list | first %}
+          {% set prices = tomorrow_price['prices'][key] | map(attribute='price') | list %}
+          {{ (prices | sum / prices | count) | round(4) }}
+        attributes:
+          data: >
+            {% set data = namespace(prices=[]) %}
+            {% set key = tomorrow_price['prices'] | list | first %}
+            {% for state in tomorrow_price['prices'][key] %}
+              {% set data.prices = data.prices + [{'start_time': state.start_time, 'price_per_kwh': state.price}] %}
+            {% endfor %}
+            {{ data.prices }}
+
+  # ── Soil moisture balance — ET₀ rolling water budget model (5 days) ────
+  # Rolling budget: rain received minus water lost to evapotranspiration
+  # (ET₀) over the last 5 days. When the balance drops below the
+  # configured threshold, the irrigation automation waters the garden.
+  - sensor:
+      - name: "Soil Moisture Balance"
+        unique_id: soil_moisture_balance
+        unit_of_measurement: "mm"
+        icon: mdi:water-percent
+        state: >-
+          {% set rain_history = states('sensor.open_meteo_rain_5d') | float(0) %}
+          {% set et0_history = states('sensor.open_meteo_et0_5d') | float(0) %}
+          {% set local_rain_gauge = states('sensor.netatmo_rain_24h') %}
+          {% set forecast = states('sensor.open_meteo_rain_forecast_today') | float(0) %}
+          {% if local_rain_gauge not in ['unavailable', 'unknown'] %}
+            {% set rain_today = local_rain_gauge | float(0) %}
+          {% else %}
+            {% set rain_today = 0 %}
+          {% endif %}
+          {{ (rain_history + rain_today + (forecast * 0.5) - et0_history) | round(2) }}
+        attributes:
+          rain_5d: "{{ states('sensor.open_meteo_rain_5d') }}"
+          et0_5d: "{{ states('sensor.open_meteo_et0_5d') }}"
+          local_rain_gauge_24h: "{{ states('sensor.netatmo_rain_24h') }}"
+          forecast_today: "{{ states('sensor.open_meteo_rain_forecast_today') }}"
+
+# ── Irrigation: local rain gauge shell sensor (Netatmo) ─────────────────
+# Runs scripts/netatmo_rain.sh, which needs your own Netatmo API
+# credentials and station coordinates — see that file for setup.
+command_line:
+  - sensor:
+      name: "Netatmo Rain 24h"
+      unique_id: netatmo_rain_24h
+      command: "bash /config/netatmo_rain.sh"
+      scan_interval: 3600
+      unit_of_measurement: "mm"
+      device_class: precipitation
+
+# ── Irrigation: REST sensor (Open-Meteo, free, no API key needed) ───────
+# past_days=5 + forecast_days=2 → 7 daily values (indices 0-4 = past 5
+# days, index 5 = today so far, index 6 = tomorrow's forecast).
+#
+# Replace <YOUR_LATITUDE> / <YOUR_LONGITUDE> / <YOUR_TIMEZONE> with your
+# own location, e.g. latitude=52.3676&longitude=4.9041&timezone=Europe%2FAmsterdam
+rest:
+  - resource: "https://api.open-meteo.com/v1/forecast?latitude=<YOUR_LATITUDE>&longitude=<YOUR_LONGITUDE>&daily=precipitation_sum,et0_fao_evapotranspiration,rain_sum&past_days=5&forecast_days=2&timezone=<YOUR_TIMEZONE>"
+    scan_interval: 3600
+    sensor:
+      - name: "Open-Meteo Rain 5 Days"
+        unique_id: open_meteo_rain_5d
+        unit_of_measurement: "mm"
+        device_class: precipitation
+        value_template: >
+          {% set ns = namespace(total=0) %}
+          {% for i in range(5) %}
+            {% set ns.total = ns.total + (value_json.daily.rain_sum[i] | float(0)) %}
+          {% endfor %}
+          {{ ns.total | round(2) }}
+
+      - name: "Open-Meteo ET0 5 Days"
+        unique_id: open_meteo_et0_5d
+        unit_of_measurement: "mm"
+        value_template: >
+          {% set ns = namespace(total=0) %}
+          {% for i in range(5) %}
+            {% set ns.total = ns.total + (value_json.daily.et0_fao_evapotranspiration[i] | float(0)) %}
+          {% endfor %}
+          {{ ns.total | round(2) }}
+
+      - name: "Open-Meteo Rain Forecast Today"
+        unique_id: open_meteo_rain_forecast_today
+        unit_of_measurement: "mm"
+        device_class: precipitation
+        value_template: >
+          {{ value_json.daily.rain_sum[5] | float(0) | round(2) }}
+
+      # ── Robot mower gate: today's ET₀ rate in mm/hour ───────────────
+      # index 5 = today's daily ET₀ (FAO evapotranspiration); /24 → mm/h.
+      - name: "Mower ET0 per hour"
+        unique_id: mower_et0_per_hour
+        unit_of_measurement: "mm/h"
+        value_template: >
+          {{ (value_json.daily.et0_fao_evapotranspiration[5] | float(0) / 24) | round(3) }}

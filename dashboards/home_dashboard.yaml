@@ -1,0 +1,671 @@
+title: Home
+kiosk_mode:
+  user_settings:
+    - users:
+        - walldisplay
+      hide_header: true
+      hide_sidebar: true
+views:
+  - title: Home
+    path: home
+    panel: true
+    background: "#0d0f10"
+    cards:
+      - type: custom:layout-card
+        layout_type: grid
+        layout:
+          # Total: 960×472px (≈961×473)
+          # Sidebar: 52px
+          # Area image: 209px+209px = 418px (+ gap) = 424px wide
+          # Cards: 233px each = square (row height = 233px)
+          # 52 + 209+209 + 233+233 + 4×6px gaps = 960px
+          # 233+233 + 6px gap = 472px tall
+          grid-template-columns: 52px 209px 209px 233px 233px
+          grid-template-rows: 233px 233px
+          gap: 6px
+          padding: 0
+          margin: 0
+        card_mod:
+          style: |
+            ha-card {
+              background: transparent !important;
+              border: none !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+              margin: 0 !important;
+            }
+
+        cards:
+
+          # ─── SIDEBAR ─── col 1, rows 1-2 ────────────────────────────────
+          # Black strip flush with screen edge, 2 nav icons centered
+          - type: custom:layout-card
+            layout_type: grid
+            layout:
+              grid-template-columns: 1fr
+              grid-template-rows: auto auto
+              align-content: center
+              justify-items: start
+              gap: 20px
+              padding: 0 0 0 4px
+            view_layout:
+              grid-column: 1 / 2
+              grid-row: 1 / 3
+            card_mod:
+              style: |
+                ha-card {
+                  background: #000000 !important;
+                  border: none !important;
+                  border-radius: 0 !important;
+                  box-shadow: none !important;
+                  height: 100%;
+                  margin: 0;
+                }
+            cards:
+              # Home (active — this dashboard)
+              - type: custom:button-card
+                show_icon: false
+                show_name: false
+                show_entity_picture: true
+                entity_picture: /local/assets/icons/home-active.png
+                tap_action:
+                  action: navigate
+                  navigation_path: /home-tablet/home
+                styles:
+                  card:
+                    - background: transparent
+                    - border: none
+                    - box-shadow: none
+                    - width: 44px
+                    - height: 44px
+                    - border-radius: 10px
+                    - margin-left: -10px
+                  entity_picture:
+                    - width: 28px
+                    - height: 28px
+                    - border-radius: 0
+
+              # Garage (inactive)
+              - type: custom:button-card
+                show_icon: false
+                show_name: false
+                show_entity_picture: true
+                entity_picture: /local/assets/icons/garage.png
+                tap_action:
+                  action: navigate
+                  navigation_path: /garage-tablet/garage
+                styles:
+                  card:
+                    - background: transparent
+                    - border: none
+                    - box-shadow: none
+                    - width: 44px
+                    - height: 44px
+                    - border-radius: 10px
+                    - margin-left: -10px
+                  entity_picture:
+                    - width: 28px
+                    - height: 28px
+                    - border-radius: 0
+
+          # ─── AREA IMAGE ─── cols 2-3, rows 1-2 ──────────────────────────
+          # 424px wide (209+6+209) × 472px tall
+          - type: custom:stack-in-card
+            mode: vertical
+            view_layout:
+              grid-column: 2 / 4
+              grid-row: 1 / 3
+            card_mod:
+              style: >
+                {% set lights_on = states('light.sofa_floor_lamp') == 'on' %}
+                {% set is_night   = states('sun.sun') == 'below_horizon' %}
+                {% set cozy       = states('input_boolean.scene_cozy') == 'on' %}
+                {% if cozy %}
+                  {% set bg = 'livingroom-2-cozy.png' %}
+                {% elif lights_on %}
+                  {% set bg = 'livingroom-2-on.jpg' %}
+                {% elif is_night %}
+                  {% set bg = 'livingroom-2-night-off.jpg' %}
+                {% else %}
+                  {% set bg = 'livingroom-2.png' %}
+                {% endif %}
+                ha-card {
+                  background: url('/local/assets/{{ bg }}') center bottom / cover no-repeat !important;
+                  border-radius: 16px !important;
+                  overflow: hidden !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                  height: 455px;
+                  position: relative !important;
+                }
+
+            cards:
+              # Overlay — transparent picture-elements, floats over the background
+              - type: picture-elements
+                image: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                card_mod:
+                  style: |
+                    ha-card {
+                      position: absolute !important;
+                      inset: 0 !important;
+                      background: transparent !important;
+                      border: none !important;
+                      box-shadow: none !important;
+                    }
+                elements:
+                  # Time - top left
+                  - type: custom:button-card
+                    entity: sensor.time
+                    show_name: false
+                    show_icon: false
+                    show_state: true
+                    tap_action:
+                      action: none
+                    styles:
+                      card:
+                        - background: transparent
+                        - border: none
+                        - box-shadow: none
+                        - padding: 0
+                      state:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 48px
+                        - font-weight: 600
+                        - color: white
+                        - text-shadow: 2px 2px 24px rgba(0,0,0,0.8)
+                        - letter-spacing: "-1px"
+                    style:
+                      top: 8%
+                      left: 5%
+                      transform: translate(0, 0)
+
+                  # Date - immediately below time
+                  - type: custom:button-card
+                    entity: sensor.date
+                    show_name: false
+                    show_icon: false
+                    show_state: true
+                    tap_action:
+                      action: none
+                    state_display: |
+                      [[[
+                        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                        const d = new Date();
+                        return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()];
+                      ]]]
+                    styles:
+                      card:
+                        - background: transparent
+                        - border: none
+                        - box-shadow: none
+                        - padding: 0
+                      state:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 13px
+                        - font-weight: 300
+                        - color: "rgba(255,255,255,0.7)"
+                    style:
+                      top: 22%
+                      left: 5%
+                      transform: translate(0, 0)
+
+                  # Scene buttons — pinned to bottom
+                  - type: custom:button-card
+                    entity: input_boolean.scene_cooking
+                    icon: mdi:bowl-mix
+                    show_name: false
+                    tap_action:
+                      action: call-service
+                      service: scene.turn_on
+                      service_data:
+                        entity_id: |
+                          [[[
+                            return entity && entity.state === 'on'
+                              ? 'scene.lights_on'
+                              : 'scene.cooking_mode';
+                          ]]]
+                    styles:
+                      card:
+                        - width: 56px
+                        - height: 56px
+                        - background: "#121212"
+                        - border-radius: 12px
+                        - border: none
+                        - box-shadow: none
+                      icon:
+                        - width: 27px
+                        - height: 27px
+                        - color: |
+                            [[[
+                              return entity && entity.state === 'on' ? '#38f2e9' : '#d1d2d1';
+                            ]]]
+                      name:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 8px
+                        - color: "#d1d2d1"
+                    style:
+                      bottom: -20px
+                      left: 28px
+                      transform: translate(0, 0)
+
+                  - type: custom:button-card
+                    entity: input_boolean.scene_cozy
+                    show_icon: false
+                    show_name: false
+                    show_entity_picture: true
+                    tap_action:
+                      action: call-service
+                      service: scene.turn_on
+                      service_data:
+                        entity_id: scene.cozy_mode
+                    state:
+                      - value: "on"
+                        entity_picture: /local/assets/icons/cozy-scene-active.png
+                      - value: "off"
+                        entity_picture: /local/assets/icons/cozy-scene.png
+                    styles:
+                      card:
+                        - width: 56px
+                        - height: 56px
+                        - background: "#121212"
+                        - border-radius: 12px
+                        - border: none
+                        - box-shadow: none
+                      entity_picture:
+                        - width: 27px
+                        - height: 27px
+                        - border-radius: 0
+                      name:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 8px
+                        - color: "#d1d2d1"
+                    style:
+                      bottom: -20px
+                      left: 27%
+                      transform: translate(0, 0)
+
+                  - type: custom:button-card
+                    entity: input_boolean.scene_gameboard
+                    show_icon: false
+                    show_name: false
+                    show_entity_picture: true
+                    tap_action:
+                      action: call-service
+                      service: scene.turn_on
+                      service_data:
+                        entity_id: scene.gameboard_mode
+                    state:
+                      - value: "on"
+                        entity_picture: /local/assets/icons/game-scene-active.png
+                      - value: "off"
+                        entity_picture: /local/assets/icons/game-scene.png
+                    styles:
+                      card:
+                        - width: 56px
+                        - height: 56px
+                        - background: "#121212"
+                        - border-radius: 12px
+                        - border: none
+                        - box-shadow: none
+                      entity_picture:
+                        - width: 27px
+                        - height: 27px
+                        - border-radius: 0
+                      name:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 8px
+                        - color: "#d1d2d1"
+                    style:
+                      bottom: -20px
+                      left: 51%
+                      transform: translate(0, 0)
+
+                  - type: custom:button-card
+                    icon: mdi:lightbulb
+                    tap_action:
+                      action: call-service
+                      service: scene.turn_on
+                      service_data:
+                        entity_id: scene.lights_on
+                    styles:
+                      card:
+                        - width: 56px
+                        - height: 56px
+                        - background: "#121212"
+                        - border-radius: 12px
+                        - border: none
+                        - box-shadow: none
+                      icon:
+                        - width: 27px
+                        - height: 27px
+                        - color: "#d1d2d1"
+                      name:
+                        - font-family: "'Poppins', sans-serif"
+                        - font-size: 8px
+                        - color: "#d1d2d1"
+                    style:
+                      bottom: -20px
+                      left: 75%
+                      transform: translate(0, 0)
+
+          # ─── ENERGY PRICE ─── col 4, row 1 ─ 233×233px ──────────────────
+          - type: custom:stack-in-card
+            mode: vertical
+            view_layout:
+              grid-column: 4 / 5
+              grid-row: 1 / 2
+            card_mod:
+              style: |
+                ha-card {
+                  background: #1e2022 !important;
+                  border: none !important;
+                  border-radius: 16px !important;
+                  box-shadow: none !important;
+                  height: 100%;
+                  overflow: hidden;
+                }
+            cards:
+              - type: custom:button-card
+                icon: mdi:lightning-bolt
+                name: Energy Price
+                entity: sensor.tibber_prices
+                show_name: true
+                show_icon: true
+                show_state: true
+                tap_action:
+                  action: none
+                styles:
+                  card:
+                    - background: transparent
+                    - border: none
+                    - box-shadow: none
+                    - padding: 12px 13px 6px
+                    - height: auto
+                    - --keep-background: "'true'"
+                  grid:
+                    - grid-template-areas: '"i n" "i s"'
+                    - grid-template-columns: min-content 1fr
+                    - grid-template-rows: min-content min-content
+                    - gap: 2px 9px
+                    - justify-content: center
+                    - justify-items: start
+                    - align-items: center
+                  img_cell:
+                    - background: "#141414"
+                    - border-radius: 16px
+                    - padding: 6px
+                    - width: 36px
+                    - height: 36px
+                    - display: flex
+                    - align-items: center
+                    - justify-content: center
+                  icon:
+                    - color: "#38f2e9"
+                    - width: 26px
+                    - height: 26px
+                  name:
+                    - color: white
+                    - font-family: "'Poppins', sans-serif"
+                    - font-size: 18px
+                    - font-weight: 500
+                    - text-align: left
+                    - justify-self: start
+                  state:
+                    - color: "#5b5b5c"
+                    - font-family: "'Poppins', sans-serif"
+                    - font-size: 12px
+                    - text-align: left
+                    - justify-self: start
+                    - margin-top: -10px
+              - type: custom:price-timeline-card
+                price: sensor.tibber_prices
+                view: timeline
+                theme: dark
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: transparent !important;
+                      border: none !important;
+                      box-shadow: none !important;
+                      border-radius: 0 !important;
+                    }
+
+          # ─── MEDIA PLAYER ─── col 5, row 1 ─ 233×233px ──────────────────
+          - type: custom:button-card
+            view_layout:
+              grid-column: 5 / 6
+              grid-row: 1 / 2
+            entity: media_player.living_room_media_player
+            show_name: true
+            show_icon: true
+            show_state: true
+            icon: |
+              [[[
+                const isPlaying = entity && entity.state === 'playing';
+                const source = entity?.attributes?.source ?? '';
+                const radioActive = isPlaying && source !== 'TV';
+                return radioActive ? 'mdi:pause-circle' : 'mdi:play-circle';
+              ]]]
+            name: Speaker
+            state_display: |
+              [[[
+                const isPlaying = entity && entity.state === 'playing';
+                const source = entity?.attributes?.source ?? '';
+                const radioActive = isPlaying && source !== 'TV';
+                return radioActive ? 'Playing · Radio' : 'Living Room | Off';
+              ]]]
+            tap_action:
+              action: call-service
+              service: |
+                [[[
+                  const isPlaying = entity && entity.state === 'playing';
+                  const source = entity?.attributes?.source ?? '';
+                  const radioActive = isPlaying && source !== 'TV';
+                  return radioActive ? 'media_player.media_pause' : 'button.press';
+                ]]]
+              service_data:
+                entity_id: |
+                  [[[
+                    const isPlaying = entity && entity.state === 'playing';
+                    const source = entity?.attributes?.source ?? '';
+                    const radioActive = isPlaying && source !== 'TV';
+                    return radioActive
+                      ? 'media_player.living_room_media_player'
+                      : 'button.living_room_radio_preset';
+                  ]]]
+            styles:
+              card:
+                - background: "url('/local/assets/media-player-bg.jpg') center/cover #1e2022"
+                - border: none
+                - border-radius: 16px
+                - height: 100%
+                - box-shadow: none
+              grid:
+                - grid-template-areas: '"i" "n" "s"'
+                - grid-template-columns: 1fr
+                - grid-template-rows: 1fr auto auto
+                - padding: 16px
+                - align-items: center
+                - justify-items: center
+              img_cell:
+                - display: flex
+                - align-items: center
+                - justify-content: center
+              icon:
+                - color: white
+                - width: 64px
+                - height: 64px
+                - filter: drop-shadow(0 2px 12px rgba(0,0,0,0.6))
+              name:
+                - color: white
+                - font-family: "'Poppins', sans-serif"
+                - font-size: 14px
+                - font-weight: 500
+                - text-align: center
+              state:
+                - color: "rgba(255,255,255,0.55)"
+                - font-family: "'Poppins', sans-serif"
+                - font-size: 11px
+                - text-align: center
+
+          # ─── CAR ─── col 4, row 2 ─ 233×233px square ────────────────────
+          # Example uses a Volvo integration's sensor names — replace the
+          # sensor.car_* entity IDs below with your own car integration's
+          # sensors (or delete this card if you don't want a car tile).
+          - type: custom:button-card
+            view_layout:
+              grid-column: 4 / 5
+              grid-row: 2 / 3
+            show_name: false
+            show_icon: false
+            show_state: false
+            tap_action:
+              action: none
+            custom_fields:
+              header: |
+                [[[
+                  const batteryRange   = parseFloat(states['sensor.car_battery_range']?.state) || 0;
+                  const tankRange      = parseFloat(states['sensor.car_fuel_range']?.state)    || 0;
+                  const totalRange     = Math.round(batteryRange + tankRange);
+
+                  return `
+                    <div style="display:flex;align-items:start;gap:9px;font-family:'Poppins',sans-serif;">
+                      <div style="background:#141414;border-radius:16px;padding:6px;width:36px;height:36px;display:flex;align-items:start;justify-content:center;flex-shrink:0;">
+                        <ha-icon icon="mdi:car" style="--mdc-icon-size:24px;color:#38f2e9;"></ha-icon>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:0px;">
+                        <span style="font-size:18px;font-weight:500;color:white;line-height:1.2;">Car</span>
+                        <div style="font-size:16px;font-weight:200;color:white;line-height:1;letter-spacing:-1px;text-shadow:0 2px 12px rgba(0,0,0,0.7);">
+                          ${totalRange} <span style="font-size:11px;font-weight:300;opacity:0.8;">km</span>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                ]]]
+              info: |
+                [[[
+                  const batteryRange   = parseFloat(states['sensor.car_battery_range']?.state) || 0;
+                  const tankRange      = parseFloat(states['sensor.car_fuel_range']?.state)    || 0;
+                  const battery        = states['sensor.car_battery']?.state ?? '—';
+                  const chargingStatus = states['sensor.car_charging_status']?.state ?? '';
+                  const fuelL          = parseFloat(states['sensor.car_fuel_amount']?.state) || 0;
+                  const fuelPct        = Math.round((fuelL / 50) * 100);
+                  const tankKm         = Math.round(tankRange);
+
+                  const batteryIcon = chargingStatus.toLowerCase() === 'scheduled'
+                    ? 'mdi:clock-outline'
+                    : 'mdi:battery';
+
+                  return `
+                    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:5px;font-family:'Poppins',sans-serif;">
+                      <div style="display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:5px;">
+                        <ha-icon icon="${batteryIcon}" style="--mdc-icon-size:13px;color:rgba(255,255,255,0.65);flex-shrink:0;"></ha-icon>
+                        <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.9);">${battery}%</span>
+                        <span style="font-size:11px;font-weight:300;color:rgba(255,255,255,0.45);">${chargingStatus}</span>
+                      </div>
+                      <div style="display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:5px;margin-top:-7px;">
+                        <ha-icon icon="mdi:fuel" style="--mdc-icon-size:13px;color:rgba(255,255,255,0.65);flex-shrink:0;"></ha-icon>
+                        <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.9);">${fuelPct}%</span>
+                        <span style="font-size:11px;font-weight:300;color:rgba(255,255,255,0.45);">${tankKm} km</span>
+                      </div>
+                    </div>
+                  `;
+                ]]]
+            styles:
+              card:
+                - background: "url('/local/assets/car.png') center/cover #1e2022"
+                - border: none
+                - border-radius: 16px
+                - height: 100%
+                - box-shadow: none
+                - position: relative
+                - overflow: hidden
+              custom_fields:
+                header:
+                  - position: absolute
+                  - left: 13px
+                  - top: 13px
+                info:
+                  - position: absolute
+                  - left: 16px
+                  - top: 32%
+
+          # ─── ALL LIGHTS TOGGLE ─── col 5, row 2 ─ 233×233px square ──────
+          - type: custom:button-card
+            view_layout:
+              grid-column: 5 / 6
+              grid-row: 2 / 3
+            entity: light.sofa_floor_lamp
+            show_name: true
+            show_icon: false
+            show_state: true
+            show_entity_picture: true
+            name: All Lights
+            state:
+              - value: "on"
+                entity_picture: /local/assets/icons/light-on.png
+              - value: "off"
+                entity_picture: /local/assets/icons/light-off.png
+            state_display: |
+              [[[
+                const isOn = entity && entity.state === 'on';
+                return 'Indoor | ' + (isOn ? 'On' : 'Off');
+              ]]]
+            tap_action:
+              action: call-service
+              service: scene.turn_on
+              service_data:
+                entity_id: |
+                  [[[
+                    return entity && entity.state === 'on'
+                      ? 'scene.sleep_mode'
+                      : 'scene.lights_on';
+                  ]]]
+            styles:
+              card:
+                - background: >
+                    [[[
+                      const isOn = entity && entity.state === 'on';
+                      return `url('/local/assets/${isOn ? 'lights-on' : 'lights-off'}.jpg') center/cover #1e2022`;
+                    ]]]
+                - border: none
+                - border-radius: 16px
+                - height: 100%
+                - box-shadow: none
+              grid:
+                - grid-template-areas: '"i n" "i s"'
+                - grid-template-columns: min-content 1fr
+                - grid-template-rows: min-content min-content
+                - gap: 2px 9px
+                - padding: 13px
+                - align-content: start
+                - justify-items: start
+                - align-items: start
+              img_cell:
+                - background: "#141414"
+                - border-radius: 16px
+                - padding: 6px
+                - width: 36px
+                - height: 36px
+                - display: flex
+                - align-items: center
+                - justify-content: center
+              entity_picture:
+                - width: 26px
+                - height: 26px
+                - border-radius: 0
+              name:
+                - color: white
+                - font-family: "'Poppins', sans-serif"
+                - font-size: 18px
+                - font-weight: 500
+                - text-align: left
+                - justify-self: start
+              state:
+                - color: "#5b5b5c"
+                - font-family: "'Poppins', sans-serif"
+                - font-size: 12px
+                - text-align: left
+                - justify-self: start
+                - margin-top: -10px

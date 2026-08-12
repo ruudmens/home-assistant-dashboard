@@ -1,0 +1,946 @@
+# ── Cooking Mode ─────────────────────────────────────────────────────────────
+
+# 18:00 — boost kitchen lights to 150 if they are already on
+- id: cooking_mode_on
+  alias: "Cooking Mode - Kitchen Boost (18:00)"
+  description: "Activate Cooking Mode scene at 18:00, only when kitchen lights are already on"
+  trigger:
+    - trigger: time
+      at: "18:00:00"
+  condition:
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: light.kitchen_spot_1
+          state: "on"
+        - condition: state
+          entity_id: light.coffee_corner
+          state: "on"
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.cooking_mode
+  mode: single
+
+# 19:30 — revert kitchen lights to 40 if cooking mode is still active
+- id: cooking_mode_off
+  alias: "Cooking Mode - Kitchen Restore (19:30)"
+  description: "Restore kitchen lights to brightness 40 at 19:30 if cooking mode was active"
+  trigger:
+    - trigger: time
+      at: "19:30:00"
+  condition:
+    - condition: state
+      entity_id: input_boolean.scene_cooking
+      state: "on"
+  action:
+    - action: light.turn_on
+      target:
+        entity_id:
+          - light.coffee_corner
+          - light.kitchen_spot_1
+          - light.kitchen_spot_2
+          - light.kitchen_spot_3
+          - light.kitchen_pendant_1
+          - light.kitchen_pendant_2
+      data:
+        brightness: 40
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.scene_cooking
+  mode: single
+
+# 18:00 — activate Cooking Mode if lux < 100 and kitchen light is off (dark but no one turned it on)
+- id: cooking_mode_lux_on
+  alias: "Cooking Mode - Auto On (18:00, dark, kitchen off)"
+  description: "Activate Cooking Mode at 18:00 if lux is below 100 and kitchen_spot_1 is off"
+  trigger:
+    - trigger: time
+      at: "18:00:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 100
+    - condition: state
+      entity_id: light.kitchen_spot_1
+      state: "off"
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.cooking_mode
+  mode: single
+
+# ── Outdoor Lights ────────────────────────────────────────────────────────────
+
+# Awake mode: 30 min before sunset — house spots + garage at 50%
+- id: outdoor_lights_awake
+  alias: "Outdoor Lights - Awake Mode"
+  description: "Activate outdoor awake scene 30 min before sunset"
+  trigger:
+    - trigger: sun
+      event: sunset
+      offset: "-00:30:00"
+  condition: []
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.outdoor_awake
+  mode: single
+
+# Sleep mode: 23:00 — house spots 25%, one wall light off, master bedroom 10%, garage 25%
+- id: outdoor_lights_sleep
+  alias: "Outdoor Lights - Sleep Mode"
+  description: "Dim outdoor lights to sleep settings at 23:00"
+  trigger:
+    - trigger: time
+      at: "23:00:00"
+  condition: []
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.outdoor_sleep
+  mode: single
+
+# Morning on: 07:00 — only if sun altitude is still below 2° (handles hills blocking early light)
+- id: outdoor_lights_morning_on
+  alias: "Outdoor Lights - Morning On"
+  description: "Activate morning outdoor scene at 07:00 when sun elevation is below 2°"
+  trigger:
+    - trigger: time
+      at: "07:00:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sun.sun
+      attribute: elevation
+      below: 2
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.outdoor_morning
+  mode: single
+
+# Morning off: sun elevation rises above 2° — daylight sufficient (handles hills, works year-round)
+- id: outdoor_lights_morning_off
+  alias: "Outdoor Lights - Morning Off"
+  description: "Turn off all outdoor lights when sun elevation exceeds 2° in the morning"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sun.sun
+      attribute: elevation
+      above: 2
+  condition:
+    - condition: time
+      after: "04:00:00"
+      before: "12:00:00"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.front_door_wall
+          - light.outdoor_spot_1
+          - light.living_room_wall
+          - light.master_bedroom_wall
+          - light.master_bedroom_outdoor_wall
+          - light.laundry_wall
+          - light.exterior_spot
+          - light.carport_light_0 # garage
+          - light.carport_light_1 # carport
+  mode: single
+
+# Afternoon carport on: 15:00 or 30 min before sunset — carport 25%, only 15:00-19:00 window
+- id: outdoor_carport_afternoon_on
+  alias: "Outdoor Carport - Afternoon On"
+  description: "Turn carport on at 25% when dark in the 15:00-19:00 afternoon window"
+  trigger:
+    - trigger: time
+      at: "15:00:00"
+    - trigger: sun
+      event: sunset
+      offset: "-00:30:00"
+  condition:
+    - condition: time
+      after: "15:00:00"
+      before: "19:00:00"
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: sun.sun
+          state: below_horizon
+        - condition: template
+          value_template: >
+            {{ state_attr('sun.sun', 'elevation') | float < 6 and
+               not (state_attr('sun.sun', 'rising') | bool(true)) }}
+  action:
+    - action: light.turn_on
+      target:
+        entity_id: light.carport
+      data:
+        brightness_pct: 25
+  mode: single
+
+# Afternoon carport off: 19:00 — end of afternoon window
+- id: outdoor_carport_afternoon_off
+  alias: "Outdoor Carport - Afternoon Off"
+  description: "Turn off carport at 19:00 (end of afternoon window)"
+  trigger:
+    - trigger: time
+      at: "19:00:00"
+  condition: []
+  action:
+    - action: light.turn_off
+      target:
+        entity_id: light.carport
+  mode: single
+
+# ── Indoor Lights (lux-based) ─────────────────────────────────────────────────
+
+# Morning: 07:00 — turn on lights (excl. family room/corridor) if lux < 35
+# Family room and corridor are handled by separate weekday/weekend schedules below.
+- id: indoor_lights_morning_on
+  alias: "Indoor Lights - Morning On (lux < 50)"
+  description: "Activate Morning Lights On scene at 07:00 if illuminance is below 50 lux; family room/corridor excluded and handled by staggered schedule"
+  trigger:
+    - trigger: time
+      at: "07:00:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 50
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.morning_lights_on
+  mode: single
+
+# Weekday 07:30 — Family room on at 10% if lux < 35
+- id: morning_family_room_weekday_on
+  alias: "Indoor Lights - Morning Family Room Weekday On (07:30)"
+  description: "Turn on the family room at 10% at 07:30 on weekdays if lux is below 35"
+  trigger:
+    - trigger: time
+      at: "07:30:00"
+  condition:
+    - condition: time
+      weekday:
+        - mon
+        - tue
+        - wed
+        - thu
+        - fri
+    - condition: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 35
+  action:
+    - action: light.turn_on
+      target:
+        entity_id: light.family_room
+      data:
+        brightness_pct: 10
+  mode: single
+
+# Weekday 08:00 — Corridor on at 10% if lux < 35
+- id: morning_corridor_weekday_on
+  alias: "Indoor Lights - Morning Corridor Weekday On (08:00)"
+  description: "Turn on the corridor at 10% at 08:00 on weekdays if lux is below 35"
+  trigger:
+    - trigger: time
+      at: "08:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - mon
+        - tue
+        - wed
+        - thu
+        - fri
+    - condition: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 35
+  action:
+    - action: light.turn_on
+      target:
+        entity_id: light.corridor
+      data:
+        brightness_pct: 10
+  mode: single
+
+# 09:00 weekday — Family room/corridor brighten to normal if they are on (dim-to-full transition)
+- id: morning_family_room_corridor_brighten
+  alias: "Indoor Lights - Morning Family Room/Corridor Brighten (09:00)"
+  description: "Bring family room and corridor to brightness 80 at 09:00 if they are on (weekday 10% dim → full)"
+  trigger:
+    - trigger: time
+      at: "09:00:00"
+  condition:
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: light.family_room
+          state: "on"
+        - condition: state
+          entity_id: light.corridor
+          state: "on"
+  action:
+    - action: light.turn_on
+      target:
+        entity_id:
+          - light.family_room
+          - light.corridor
+      data:
+        brightness: 80
+  mode: single
+
+# 09:00 weekend — Family room/corridor turn on if lux < 80
+- id: morning_family_room_corridor_weekend_on
+  alias: "Indoor Lights - Morning Family Room/Corridor Weekend On (09:00)"
+  description: "Turn on family room and corridor at brightness 80 at 09:00 on weekends if lux is below 80"
+  trigger:
+    - trigger: time
+      at: "09:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - sat
+        - sun
+    - condition: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 80
+  action:
+    - action: light.turn_on
+      target:
+        entity_id:
+          - light.family_room
+          - light.corridor
+      data:
+        brightness: 80
+  mode: single
+
+# Morning: lux > 40 sustained 10 min → turn off general lights (07:00-09:00)
+- id: indoor_lights_morning_general_off
+  alias: "Indoor Lights - Morning General Off (lux > 40)"
+  description: "Turn off general indoor lights in morning window when lux stays above 40 for 10 min"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      above: 40
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "07:00:00"
+      before: "09:00:00"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.entrance
+          - light.hall
+          - light.media_cabinet
+          - light.sofa_floor_lamp
+          - light.floor_lamp_1
+          - light.floor_lamp_2
+          - light.floor_lamp_3
+          - light.coffee_corner
+          - light.kitchen_spot_1
+          - light.kitchen_spot_2
+          - light.kitchen_spot_3
+          - light.kitchen_pendant_1
+          - light.kitchen_pendant_2
+          - light.dining_table
+          - light.kitchen_led_strip_1
+          - light.kitchen_led_strip_2
+          - light.dining_cabinet
+          - light.window_floor_lamp
+    - action: switch.turn_off
+      target:
+        entity_id: switch.cabinet_accent_light
+  mode: single
+
+# Morning: lux > 150 sustained 10 min → turn off Family Room and Corridor (07:00-09:00)
+- id: indoor_lights_morning_family_room_off
+  alias: "Indoor Lights - Morning Family Room/Corridor Off (lux > 150)"
+  description: "Turn off family room and corridor in morning window when lux stays above 150 for 5 min"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      above: 150
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "07:00:00"
+      before: "09:00:00"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.family_room
+          - light.corridor
+  mode: single
+
+# Day: lux < 50 sustained 10 min → turn on all lights (09:00-22:30)
+# If Cooking Mode is active, use Lights On Cooking to preserve kitchen brightness.
+- id: indoor_lights_day_on
+  alias: "Indoor Lights - Day On (lux < 45)"
+  description: "Activate Lights On scene when lux drops below 50 for 10 min (09:00-22:30); respects Cooking Mode"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 50
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "09:00:00"
+      before: "22:30:00"
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.scene_cooking
+              state: "on"
+          sequence:
+            - action: scene.turn_on
+              target:
+                entity_id: scene.lights_on_cooking
+      default:
+        - action: scene.turn_on
+          target:
+            entity_id: scene.lights_on
+  mode: single
+
+# Day: lux < 80 sustained 5 min → turn on family room (09:00-19:30)
+- id: indoor_lights_family_room_day_on
+  alias: "Indoor Lights Family Room - Day On (lux < 80)"
+  description: "Activate Family Room Lights On scene when lux drops below 80 for 5 min (09:00-19:30)"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      below: 80
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "09:00:00"
+      before: "20:00:00"
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.family_room_lights_on
+  mode: single
+
+# Day: lux > 80 sustained 10 min → turn off general lights (09:00-13:00 only)
+# After 13:00 lights stay on until evening logic to prevent on/off cycling
+- id: indoor_lights_day_general_off
+  alias: "Indoor Lights - Day General Off (lux > 80)"
+  description: "Turn off general indoor lights when lux rises above 80 for 10 min (09:00-13:00)"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      above: 80
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "09:00:00"
+      before: "13:00:00"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.entrance
+          - light.hall
+          - light.media_cabinet
+          - light.sofa_floor_lamp
+          - light.floor_lamp_1
+          - light.floor_lamp_2
+          - light.floor_lamp_3
+          - light.coffee_corner
+          - light.kitchen_spot_1
+          - light.kitchen_spot_2
+          - light.kitchen_spot_3
+          - light.kitchen_pendant_1
+          - light.kitchen_pendant_2
+          - light.dining_table
+          - light.kitchen_led_strip_1
+          - light.kitchen_led_strip_2
+          - light.dining_cabinet
+          - light.window_floor_lamp
+    - action: switch.turn_off
+      target:
+        entity_id: switch.cabinet_accent_light
+  mode: single
+
+# Day: lux > 140 sustained 10 min → turn off Family Room and Corridor (09:00-13:00 only)
+- id: indoor_lights_day_family_room_off
+  alias: "Indoor Lights - Day Family Room/Corridor Off (lux > 140)"
+  description: "Turn off family room and corridor when lux rises above 140 for 10 min (09:00-13:00)"
+  trigger:
+    - trigger: numeric_state
+      entity_id: sensor.wall_display_illuminance
+      above: 140
+      for:
+        minutes: 10
+  condition:
+    - condition: time
+      after: "09:00:00"
+      before: "13:00:00"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.family_room
+          - light.corridor
+  mode: single
+
+# Evening: dim Family Room and Corridor to 10% at 20:00 (only if on)
+- id: indoor_lights_evening_dim
+  alias: "Indoor Lights - Evening Dim (20:00)"
+  description: "Dim family room and corridor to 10% at 20:00"
+  trigger:
+    - trigger: time
+      at: "20:00:00"
+  condition:
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: light.family_room
+          state: "on"
+        - condition: state
+          entity_id: light.corridor
+          state: "on"
+  action:
+    - action: light.turn_on
+      target:
+        entity_id:
+          - light.corridor
+          - light.family_room
+      data:
+        brightness_pct: 10
+  mode: single
+
+# Evening: turn off Family Room at 20:40, Corridor stays at 10%
+- id: indoor_lights_evening_family_room_off
+  alias: "Indoor Lights - Evening Family Room Off (20:40)"
+  description: "Turn off family room at 20:40, corridor stays at 10%"
+  trigger:
+    - trigger: time
+      at: "20:30:00"
+  condition:
+    - condition: state
+      entity_id: light.sofa_floor_lamp
+      state: "on"
+  action:
+    - action: light.turn_off
+      target:
+        entity_id:
+          - light.family_room
+          - light.corridor
+  mode: single
+
+# Night: activate Cozy Mode at 22:30
+- id: indoor_lights_night_cozy
+  alias: "Indoor Lights - Night Cozy Mode (22:30)"
+  description: "Activate Cozy Mode scene at 22:30"
+  trigger:
+    - trigger: time
+      at: "22:30:00"
+  condition:
+    - condition: state
+      entity_id: light.sofa_floor_lamp
+      state: "on"
+  action:
+    - action: scene.turn_on
+      target:
+        entity_id: scene.cozy_mode
+  mode: single
+
+# ── Wall Display ──────────────────────────────────────────────────────────────
+
+# Screen off: 23:15
+- id: wall_display_screen_off
+  alias: "Wall Display - Screen Off (23:15)"
+  description: "Turn off wall display screen at 23:15"
+  trigger:
+    - trigger: time
+      at: "23:15:00"
+  condition: []
+  action:
+    - action: rest_command.wall_display_screen_off
+  mode: single
+
+# Screen on: 06:00
+- id: wall_display_screen_on
+  alias: "Wall Display - Screen On (06:00)"
+  description: "Turn on wall display screen at 06:00"
+  trigger:
+    - trigger: time
+      at: "06:00:00"
+  condition: []
+  action:
+    - action: rest_command.wall_display_screen_on
+  mode: single
+
+# ── Holiday Mode ──────────────────────────────────────────────────────────────
+
+# Lights off: random time between 22:40 and 23:00 when holiday dates are active
+# Configure input_datetime.holiday_start and input_datetime.holiday_end in the UI.
+- id: holiday_lights_off
+  alias: "Holiday Mode - Lights Off (22:40-23:00)"
+  description: "Activate Sleep Mode scene at a random time between 22:40 and 23:00 when today falls within the configured holiday date range"
+  trigger:
+    - trigger: time
+      at: "22:40:00"
+  condition:
+    - condition: template
+      value_template: >
+        {% set today = now().strftime('%Y-%m-%d') %}
+        {% set start = states('input_datetime.holiday_start') %}
+        {% set end = states('input_datetime.holiday_end') %}
+        {{ start not in ['unavailable', 'unknown', 'none']
+           and end not in ['unavailable', 'unknown', 'none']
+           and start <= today <= end }}
+  action:
+    - delay:
+        minutes: "{{ range(0, 20) | random }}"
+        seconds: "{{ range(0, 59) | random }}"
+    - action: scene.turn_on
+      target:
+        entity_id: scene.sleep_mode
+  mode: single
+
+# ── Media Player ───────────────────────────────────────────────────────────────
+
+# Set volume to 12% when radio starts from idle/off/standby (prevents blasting)
+- id: media_player_volume_on_start
+  alias: "Media Player - Set Volume on Start"
+  description: "Cap living room media player volume to 12% when it starts playing from an idle or off state"
+  trigger:
+    - trigger: state
+      entity_id: media_player.living_room_media_player
+      to: "playing"
+      from:
+        - "idle"
+        - "off"
+        - "standby"
+  action:
+    - action: media_player.volume_set
+      target:
+        entity_id: media_player.living_room_media_player
+      data:
+        volume_level: 0.12
+  mode: single
+
+# ── Irrigation ────────────────────────────────────────────────────────────────
+
+# 07:00 — ET₀ soil moisture model: water for 30 min if balance drops below threshold
+- id: irrigation_et0_model
+  alias: "Garden Irrigation - ET₀ soil moisture model"
+  description: >
+    Daily at 07:00: calculates a rolling water budget (rain minus ET₀ over
+    5 days). Waters for 30 minutes (~9.5mm) if the balance drops below the
+    configured threshold.
+  trigger:
+    - trigger: time
+      at: "07:00:00"
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('sensor.soil_moisture_balance') | float(0)
+           < states('input_number.irrigation_threshold') | float(-12) }}
+  action:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.irrigation_valve
+    - delay:
+        minutes: 30
+    - action: switch.turn_off
+      target:
+        entity_id: switch.irrigation_valve
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "🌱 Garden watered"
+        message: >-
+          Balance: {{ states('sensor.soil_moisture_balance') }}mm
+          (threshold: {{ states('input_number.irrigation_threshold') }}mm).
+          Rain 5d: {{ state_attr('sensor.soil_moisture_balance', 'rain_5d') }}mm,
+          ET₀ 5d: {{ state_attr('sensor.soil_moisture_balance', 'et0_5d') }}mm,
+          Local rain gauge 24h: {{ state_attr('sensor.soil_moisture_balance', 'local_rain_gauge_24h') }}mm.
+          Valve was on for 30 min (~9.5mm added).
+  mode: single
+
+# 07:00 — skip notification when watering is intentionally skipped
+- id: irrigation_skip_notification
+  alias: "Garden Irrigation - skip notification"
+  description: "Notify when watering is skipped because the balance is above threshold"
+  trigger:
+    - trigger: time
+      at: "07:00:00"
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('sensor.soil_moisture_balance') | float(0)
+           >= states('input_number.irrigation_threshold') | float(-12) }}
+  action:
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "🌧️ Garden not watered"
+        message: >-
+          Balance {{ states('sensor.soil_moisture_balance') }}mm is above threshold
+          {{ states('input_number.irrigation_threshold') }}mm — enough soil moisture.
+  mode: single
+
+# Local rain gauge offline > 2 hours — push notification + persistent notification
+- id: rain_gauge_offline_notification
+  alias: "Irrigation - Rain gauge offline notification"
+  description: "Warn if the local rain gauge sensor is unavailable for more than 2 hours"
+  trigger:
+    - trigger: state
+      entity_id: sensor.netatmo_rain_24h
+      to: "unavailable"
+      for:
+        hours: 2
+  action:
+    # Change the notify service to your own phone: notify.mobile_app_<YOUR_DEVICE_NAME>
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "⚠️ Rain gauge unreachable"
+        message: >
+          sensor.netatmo_rain_24h has been unavailable for more than 2 hours.
+          The Open-Meteo forecast is used as a fallback for the irrigation decision.
+    - action: persistent_notification.create
+      data:
+        notification_id: rain_gauge_offline
+        title: "⚠️ Rain gauge unreachable"
+        message: >
+          sensor.netatmo_rain_24h has been unavailable for more than 2 hours.
+          The Open-Meteo forecast is used as a fallback for the irrigation decision.
+  mode: single
+
+# ── Robot Lawn Mower — Rain-Skip Gate ─────────────────────────────────────────
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ ⚠️  DRY-RUN SAFETY: every <mower_integration>.set_schedule_plan_enabled   │
+# │     call below uses  execute: false  and  confirm_schedule_write: false. │
+# │     This does NOT change the mower's real schedule — it is a no-op       │
+# │     preview. Do NOT flip these to `true` until the service signature     │
+# │     has been verified against your own mower integration.                │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# This example uses the `dreame_lawn_mower` integration's
+# set_schedule_plan_enabled service (for Dreame robot mowers). Replace the
+# action and its data with whatever your own mower integration exposes —
+# the rain/ET₀ decision logic below is integration-agnostic.
+
+# Morning gate — 08:45 daily. Decide whether to skip the mower's schedule after rain.
+- id: mower_gate_morning
+  alias: "Mower Gate - Morning (08:45)"
+  description: >
+    Daily at 08:45: if measured rain (local rain gauge, 24h) exceeds 5mm,
+    suppress the mower's native schedule for rain/ET₀-derived hours
+    (dry-run service call). If the rain gauge is unavailable, skip
+    suppression and warn. Otherwise notify that the mower will run as
+    scheduled.
+  trigger:
+    - trigger: time
+      at: "08:45:00"
+  variables:
+    # Recomputed at run time. Kept identical to the Sunday gate below.
+    rain_gauge_raw: "{{ states('sensor.netatmo_rain_24h') }}"
+    rain_gauge_ok: "{{ rain_gauge_raw not in ['unavailable', 'unknown', 'none'] }}"
+    rain_mm: "{{ rain_gauge_raw | float(0) }}"
+    et0_per_hour: "{{ states('sensor.mower_et0_per_hour') | float(0) }}"
+    # hours_to_wait = rain / ET₀-per-hour, clamped 3..48; fallback 12h if ET₀<=0.
+    hours_to_wait: >-
+      {% if et0_per_hour <= 0 %}
+        12
+      {% else %}
+        {{ [[ (rain_mm / et0_per_hour), 3 ] | max, 48] | min | round(1) }}
+      {% endif %}
+    reenable_at: >-
+      {{ (now() + timedelta(hours = hours_to_wait | float(12))).strftime('%Y-%m-%d %H:%M:%S') }}
+  condition: []
+  action:
+    - choose:
+        # 1) Rain gauge unavailable → do not suppress, warn instead.
+        - conditions:
+            - condition: template
+              value_template: "{{ not rain_gauge_ok }}"
+          sequence:
+            - action: notify.mobile_app_your_phone
+              data:
+                title: "⚠️ Mower gate"
+                message: >-
+                  Rain gauge unreachable ({{ rain_gauge_raw }}) — mow schedule
+                  not evaluated. The mower's own rain delay stays in charge.
+        # 2) Rain over threshold → suppress schedule.
+        - conditions:
+            - condition: template
+              value_template: "{{ rain_mm > 5.0 }}"
+          sequence:
+            - action: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.mower_reenable_at
+              data:
+                datetime: "{{ reenable_at }}"
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.mower_schedule_suppressed
+            # DRY-RUN — execute:false / confirm_schedule_write:false. Do NOT flip.
+            - action: dreame_lawn_mower.set_schedule_plan_enabled
+              data:
+                # entry_id: only needed if multiple mower entries are loaded.
+                map_index: 0 # 0 (or -1) for the default schedule slot
+                plan_id: 0 # ← REPLACE with your mower's real plan id
+                enabled: false
+                execute: false
+                confirm_schedule_write: false
+            - action: notify.mobile_app_your_phone
+              data:
+                title: "🌧️ Mower skipped"
+                message: >-
+                  Rain 24h: {{ rain_mm }}mm, ET₀/h: {{ et0_per_hour }}mm.
+                  Wait time: {{ hours_to_wait }}h — schedule re-enabled at
+                  {{ reenable_at }}.
+      # 3) Rain under threshold → mower runs as scheduled.
+      default:
+        - action: notify.mobile_app_your_phone
+          data:
+            title: "✅ Mower running"
+            message: >-
+              Rain 24h: {{ rain_mm }}mm (< 5mm), ET₀/h: {{ et0_per_hour }}mm.
+              Mower runs on its own schedule.
+  mode: single
+
+# Sunday afternoon gate — 12:45 Sunday only. Identical logic to the morning gate.
+- id: mower_gate_sunday
+  alias: "Mower Gate - Sunday Afternoon (12:45)"
+  description: >
+    Sundays at 12:45: second rain check with the same rain/ET₀ logic as the
+    morning gate, to catch rain that fell after the 08:45 evaluation.
+  trigger:
+    - trigger: time
+      at: "12:45:00"
+  variables:
+    rain_gauge_raw: "{{ states('sensor.netatmo_rain_24h') }}"
+    rain_gauge_ok: "{{ rain_gauge_raw not in ['unavailable', 'unknown', 'none'] }}"
+    rain_mm: "{{ rain_gauge_raw | float(0) }}"
+    et0_per_hour: "{{ states('sensor.mower_et0_per_hour') | float(0) }}"
+    hours_to_wait: >-
+      {% if et0_per_hour <= 0 %}
+        12
+      {% else %}
+        {{ [[ (rain_mm / et0_per_hour), 3 ] | max, 48] | min | round(1) }}
+      {% endif %}
+    reenable_at: >-
+      {{ (now() + timedelta(hours = hours_to_wait | float(12))).strftime('%Y-%m-%d %H:%M:%S') }}
+  condition:
+    # Sunday only. weekday() == 6 → Sunday.
+    - condition: template
+      value_template: "{{ now().weekday() == 6 }}"
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ not rain_gauge_ok }}"
+          sequence:
+            - action: notify.mobile_app_your_phone
+              data:
+                title: "⚠️ Mower gate"
+                message: >-
+                  Rain gauge unreachable ({{ rain_gauge_raw }}) — mow schedule
+                  not evaluated. The mower's own rain delay stays in charge.
+        - conditions:
+            - condition: template
+              value_template: "{{ rain_mm > 5.0 }}"
+          sequence:
+            - action: input_datetime.set_datetime
+              target:
+                entity_id: input_datetime.mower_reenable_at
+              data:
+                datetime: "{{ reenable_at }}"
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.mower_schedule_suppressed
+            # DRY-RUN — execute:false / confirm_schedule_write:false. Do NOT flip.
+            - action: dreame_lawn_mower.set_schedule_plan_enabled
+              data:
+                # entry_id: only needed if multiple mower entries are loaded.
+                map_index: 0 # 0 (or -1) for the default schedule slot
+                plan_id: 0 # ← REPLACE with your mower's real plan id
+                enabled: false
+                execute: false
+                confirm_schedule_write: false
+            - action: notify.mobile_app_your_phone
+              data:
+                title: "🌧️ Mower skipped"
+                message: >-
+                  Rain 24h: {{ rain_mm }}mm, ET₀/h: {{ et0_per_hour }}mm.
+                  Wait time: {{ hours_to_wait }}h — schedule re-enabled at
+                  {{ reenable_at }}.
+      default:
+        - action: notify.mobile_app_your_phone
+          data:
+            title: "✅ Mower running"
+            message: >-
+              Rain 24h: {{ rain_mm }}mm (< 5mm), ET₀/h: {{ et0_per_hour }}mm.
+              Mower runs on its own schedule.
+  mode: single
+
+# Re-enable watcher — fires when input_datetime.mower_reenable_at is reached.
+- id: mower_gate_reenable
+  alias: "Mower Gate - Re-enable Schedule"
+  description: >
+    When the stored re-enable time is reached and HA still has the mower
+    suppressed, re-enable its native schedule (dry-run service call) and
+    clear the flag.
+  trigger:
+    - trigger: time
+      at: input_datetime.mower_reenable_at
+  condition:
+    - condition: state
+      entity_id: input_boolean.mower_schedule_suppressed
+      state: "on"
+  action:
+    # DRY-RUN — execute:false / confirm_schedule_write:false. Do NOT flip.
+    - action: dreame_lawn_mower.set_schedule_plan_enabled
+      data:
+        # entry_id: only needed if multiple mower entries are loaded.
+        map_index: 0 # 0 (or -1) for the default schedule slot
+        plan_id: 0 # ← REPLACE with your mower's real plan id
+        enabled: true
+        execute: false
+        confirm_schedule_write: false
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.mower_schedule_suppressed
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "✅ Mower re-enabled"
+        message: >-
+          Schedule re-enabled (was set for
+          {{ states('input_datetime.mower_reenable_at') }}).
+          Rain 24h: {{ states('sensor.netatmo_rain_24h') }}mm,
+          ET₀/h: {{ states('sensor.mower_et0_per_hour') }}mm.
+  mode: single
+
+# Rain gauge unavailable warning — specific to the mower gate (separate from
+# the 2-hour irrigation alert above). Warns after 1 hour unavailable.
+- id: mower_gate_rain_gauge_unavailable
+  alias: "Mower Gate - Rain Gauge Unavailable Warning"
+  description: >
+    Warn when sensor.netatmo_rain_24h is unavailable for more than 1 hour, so
+    the mower rain gate cannot be evaluated on measured data.
+  trigger:
+    - trigger: state
+      entity_id: sensor.netatmo_rain_24h
+      to: "unavailable"
+      for:
+        hours: 1
+  condition: []
+  action:
+    - action: notify.mobile_app_your_phone
+      data:
+        title: "⚠️ Mower gate: rain gauge unavailable"
+        message: "Rain gauge unavailable — mow schedule not evaluated."
+  mode: single

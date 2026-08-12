@@ -1,0 +1,311 @@
+title: Remote
+views:
+  - title: Remote
+    path: remote
+    background: "#0d0f10"
+    cards:
+
+      # ─── HEADER: time + date ──────────────────────────────────────────────
+      - type: custom:button-card
+        show_name: false
+        show_icon: false
+        show_state: false
+        tap_action:
+          action: none
+        custom_fields:
+          time: |
+            [[[
+              return states['sensor.time']?.state ?? '--:--';
+            ]]]
+          date: |
+            [[[
+              const d = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+              const m = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+              const now = new Date();
+              return d[now.getDay()] + ', ' + now.getDate() + ' ' + m[now.getMonth()];
+            ]]]
+        styles:
+          card:
+            - background: "#1e2022"
+            - border-radius: 20px
+            - padding: 20px 20px 18px
+            - border: none
+            - box-shadow: none
+          grid:
+            - grid-template-areas: '"time" "date"'
+            - grid-template-columns: 1fr
+            - grid-template-rows: auto auto
+            - justify-items: start
+          custom_fields:
+            time:
+              - font-family: "'Poppins', sans-serif"
+              - font-size: 56px
+              - font-weight: 600
+              - color: white
+              - letter-spacing: "-2px"
+              - line-height: "1"
+            date:
+              - font-family: "'Poppins', sans-serif"
+              - font-size: 14px
+              - font-weight: 300
+              - color: "rgba(255,255,255,0.5)"
+              - margin-top: 4px
+
+      # ─── ALL INDOOR LIGHTS ────────────────────────────────────────────────
+      # Taps scene.sleep_mode when on, scene.lights_on when off.
+      # Proxy entity: light.sofa_floor_lamp (main floor lamp — reflects indoor state).
+      - type: custom:button-card
+        entity: light.sofa_floor_lamp
+        show_name: true
+        show_icon: false
+        show_state: true
+        show_entity_picture: true
+        name: All Lights
+        entity_picture: >
+          [[[
+            return entity && entity.state === 'on'
+              ? '/local/assets/icons/light-on.png'
+              : '/local/assets/icons/light-off.png';
+          ]]]
+        state_display: |
+          [[[
+            return entity && entity.state === 'on' ? 'Indoor · On' : 'Indoor · Off';
+          ]]]
+        tap_action:
+          action: call-service
+          service: scene.turn_on
+          service_data:
+            entity_id: |
+              [[[
+                return entity && entity.state === 'on'
+                  ? 'scene.sleep_mode'
+                  : 'scene.lights_on';
+              ]]]
+        styles:
+          card:
+            - background: >
+                [[[
+                  return entity && entity.state === 'on'
+                    ? "url('/local/assets/lights-on.jpg') center/cover #1e2022"
+                    : "url('/local/assets/lights-off.jpg') center/cover #1e2022";
+                ]]]
+            - border-radius: 20px
+            - height: 240px
+            - box-shadow: none
+            - border: none
+          grid:
+            - grid-template-areas: '"i n" "i s"'
+            - grid-template-columns: min-content 1fr
+            - grid-template-rows: min-content min-content
+            - gap: 2px 12px
+            - padding: 16px
+            - align-content: start
+            - justify-items: start
+            - align-items: start
+          img_cell:
+            - background: "#141414"
+            - border-radius: 14px
+            - padding: 6px
+            - width: 40px
+            - height: 40px
+            - display: flex
+            - align-items: center
+            - justify-content: center
+            - flex-shrink: "0"
+          entity_picture:
+            - width: 28px
+            - height: 28px
+            - border-radius: 0
+          name:
+            - color: white
+            - font-family: "'Poppins', sans-serif"
+            - font-size: 20px
+            - font-weight: 500
+            - text-align: left
+            - justify-self: start
+          state:
+            - color: "#5b5b5c"
+            - font-family: "'Poppins', sans-serif"
+            - font-size: 13px
+            - text-align: left
+            - justify-self: start
+            - margin-top: -8px
+
+      # ─── IRRIGATION / SOIL MOISTURE BALANCE ────────────────────────────────
+      - type: custom:button-card
+        entity: sensor.soil_moisture_balance
+        show_name: false
+        show_icon: false
+        show_state: false
+        tap_action:
+          action: none
+        custom_fields:
+          rain_data: |
+            [[[
+              const balance   = parseFloat(states['sensor.soil_moisture_balance']?.state) || 0;
+              const rain5d    = parseFloat(states['sensor.open_meteo_rain_5d']?.state) || 0;
+              const et0_5d    = parseFloat(states['sensor.open_meteo_et0_5d']?.state) || 0;
+              const rainGauge = states['sensor.netatmo_rain_24h']?.state ?? 'unavailable';
+              const forecast  = parseFloat(states['sensor.open_meteo_rain_forecast_today']?.state) || 0;
+              const threshold = parseFloat(states['input_number.irrigation_threshold']?.state) || -12;
+              const rainGaugeOk = rainGauge !== 'unavailable' && rainGauge !== 'unknown';
+              const rainGaugeMm = rainGaugeOk ? parseFloat(rainGauge).toFixed(1) + ' mm' : '— (offline)';
+              const rainGaugeColor = rainGaugeOk ? 'white' : 'rgba(255,160,60,0.9)';
+
+              // bar: balance range from threshold to +10mm, clamp to 0-100%
+              const barRange = Math.abs(threshold) + 10;
+              const barPct   = Math.min(100, Math.max(0, Math.round(((balance - threshold) / barRange) * 100)));
+              const willWater = balance < threshold;
+              const barColor  = willWater ? '#ff7043' : '#38f2e9';
+              const statusColor = willWater ? '#ff7043' : 'rgba(120,220,120,0.85)';
+              const statusText  = willWater ? '💧 Watering tomorrow 07:00' : '✓ Enough soil moisture';
+              const balanceColor  = balance < threshold ? '#ff7043' : balance < 0 ? '#38f2e9' : 'rgba(120,220,120,0.85)';
+
+              return `
+                <div style="font-family:'Poppins',sans-serif;text-align:left;width:100%;">
+
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div style="background:#141414;border-radius:12px;padding:7px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <ha-icon icon="mdi:sprout" style="--mdc-icon-size:22px;color:#38f2e9;"></ha-icon>
+                      </div>
+                      <div>
+                        <div style="font-size:18px;font-weight:500;color:white;line-height:1.1;">Garden</div>
+                        <div style="font-size:11px;font-weight:300;color:rgba(255,255,255,0.4);">ET₀ soil moisture model</div>
+                      </div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:28px;font-weight:600;color:${balanceColor};letter-spacing:-1px;line-height:1;">${balance.toFixed(1)}</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.4);">mm balance</div>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size:13px;color:rgba(255,255,255,0.5);">Rain last 5 days</span>
+                    <span style="font-size:14px;font-weight:500;color:white;">+${rain5d.toFixed(1)} mm</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size:13px;color:rgba(255,255,255,0.5);">Evapotranspiration ET₀ 5 days</span>
+                    <span style="font-size:14px;font-weight:500;color:rgba(255,200,100,0.9);">−${et0_5d.toFixed(1)} mm</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size:13px;color:rgba(255,255,255,0.5);">Rain gauge measured 24h</span>
+                    <span style="font-size:14px;font-weight:500;color:${rainGaugeColor};">${rainGaugeMm}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;margin-bottom:14px;">
+                    <span style="font-size:13px;color:rgba(255,255,255,0.5);">Forecast today (×0.5)</span>
+                    <span style="font-size:14px;font-weight:400;color:rgba(255,255,255,0.6);">+${(forecast * 0.5).toFixed(1)} mm</span>
+                  </div>
+
+                  <div style="background:rgba(255,255,255,0.07);border-radius:6px;height:5px;overflow:hidden;margin-bottom:8px;">
+                    <div style="background:${barColor};height:100%;width:${barPct}%;border-radius:6px;transition:width 0.4s;"></div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:11px;color:rgba(255,255,255,0.3);">threshold ${threshold} mm</span>
+                    <span style="font-size:12px;font-weight:500;color:${statusColor};">${statusText}</span>
+                  </div>
+
+                </div>
+              `;
+            ]]]
+        styles:
+          card:
+            - background: "#1e2022"
+            - border-radius: 20px
+            - padding: 18px
+            - border: none
+            - box-shadow: none
+            - text-align: left
+          grid:
+            - grid-template-areas: '"rain_data"'
+            - grid-template-columns: 1fr
+            - grid-template-rows: auto
+          custom_fields:
+            rain_data:
+              - width: 100%
+
+      # ─── WATER VALVE MANUAL OVERRIDE ─────────────────────────────────────
+      - type: custom:button-card
+        entity: switch.irrigation_valve
+        show_name: true
+        show_icon: true
+        show_state: true
+        name: Water Valve
+        icon: mdi:water-pump
+        state_display: |
+          [[[
+            return entity && entity.state === 'on'
+              ? 'Watering now · On'
+              : 'Manual override · Off';
+          ]]]
+        tap_action:
+          action: toggle
+        styles:
+          card:
+            - background: >
+                [[[
+                  return entity && entity.state === 'on' ? '#0c2830' : '#1e2022';
+                ]]]
+            - border: >
+                [[[
+                  return entity && entity.state === 'on'
+                    ? '1px solid rgba(56,242,233,0.25)'
+                    : '1px solid transparent';
+                ]]]
+            - border-radius: 20px
+            - height: 88px
+            - box-shadow: none
+          grid:
+            - grid-template-areas: '"i n" "i s"'
+            - grid-template-columns: min-content 1fr
+            - grid-template-rows: min-content min-content
+            - gap: 2px 12px
+            - padding: 16px 20px
+            - align-content: center
+            - justify-items: start
+            - align-items: center
+          img_cell:
+            - display: flex
+            - align-items: center
+            - justify-content: center
+          icon:
+            - color: >
+                [[[
+                  return entity && entity.state === 'on'
+                    ? '#38f2e9'
+                    : 'rgba(255,255,255,0.35)';
+                ]]]
+            - width: 28px
+            - height: 28px
+          name:
+            - color: white
+            - font-family: "'Poppins', sans-serif"
+            - font-size: 18px
+            - font-weight: 500
+            - text-align: left
+            - justify-self: start
+          state:
+            - color: "#5b5b5c"
+            - font-family: "'Poppins', sans-serif"
+            - font-size: 12px
+            - text-align: left
+            - justify-self: start
+            - margin-top: -6px
+
+      # ─── IRRIGATION THRESHOLD SLIDER ───────────────────────────────────────
+      - type: entities
+        entities:
+          - entity: input_number.irrigation_threshold
+            name: Irrigation threshold (balance)
+        card_mod:
+          style: |
+            ha-card {
+              background: #1e2022 !important;
+              border: none !important;
+              border-radius: 20px !important;
+              box-shadow: none !important;
+              font-family: 'Poppins', sans-serif !important;
+            }
+            .card-content {
+              padding: 12px 16px 16px !important;
+            }

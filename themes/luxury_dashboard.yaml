@@ -1,0 +1,70 @@
+luxury_dashboard:
+  # Primary colors
+  primary-color: "#eac578"
+  accent-color: "#eac578"
+
+  # Background colors
+  primary-background-color: "#211f1f"
+  secondary-background-color: "#2c292a"
+  card-background-color: "#2c292a"
+
+  # Text colors
+  primary-text-color: "#ffffff"
+  secondary-text-color: "#eac578"
+  text-primary-color: "#ffffff"
+  disabled-text-color: "rgba(255, 255, 255, 0.5)"
+
+  # Header
+  app-header-background-color: "#211f1f"
+  app-header-text-color: "#ffffff"
+
+  # Sidebar
+  sidebar-background-color: "#211f1f"
+  sidebar-text-color: "#ffffff"
+  sidebar-selected-background-color: "#2c292a"
+  sidebar-selected-icon-color: "#eac578"
+
+  # Cards
+  ha-card-background: "#2c292a"
+  ha-card-border-radius: "16px"
+  ha-card-box-shadow: "0 4px 24px rgba(0, 0, 0, 0.3)"
+
+  # Buttons
+  mdc-button-outline-color: "#eac578"
+
+  # Dividers
+  divider-color: "rgba(255, 255, 255, 0.1)"
+
+  # States
+  state-icon-color: "#eac578"
+  state-icon-active-color: "#eac578"
+
+  # Switches
+  switch-checked-color: "#eac578"
+  switch-unchecked-button-color: "#666666"
+  switch-unchecked-track-color: "#444444"
+
+  # Sliders
+  paper-slider-knob-color: "#eac578"
+  paper-slider-active-color: "#eac578"
+  paper-slider-container-color: "#444444"
+
+  # Input
+  input-fill-color: "#2c292a"
+  input-ink-color: "#ffffff"
+  input-label-ink-color: "#eac578"
+
+  # Font
+  primary-font-family: "'Poppins', sans-serif"
+  paper-font-common-base_-_font-family: "'Poppins', sans-serif"
+  paper-font-common-code_-_font-family: "'Poppins', sans-serif"
+  paper-font-body1_-_font-family: "'Poppins', sans-serif"
+  paper-font-subhead_-_font-family: "'Poppins', sans-serif"
+  paper-font-headline_-_font-family: "'Poppins', sans-serif"
+  paper-font-caption_-_font-family: "'Poppins', sans-serif"
+  paper-font-title_-_font-family: "'Poppins', sans-serif"
+
+  # Lovelace card mod
+  card-mod-theme: luxury_dashboard
+  card-mod-root: |
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
