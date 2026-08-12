@@ -8,7 +8,7 @@ The design is based on the work from [Handj on Dribbble](https://dribbble.com/sh
 
 **Full write-up**: [How to Create a Home Assistant Dashboard that Actually Looks Good](https://lazyadmin.nl/smart-home/home-assistant-dashboard/)-  covers the design decisions, grid math, scene tracker pattern, lux-based automations, and irrigation model in detail.
 
-<a href="https://www.buymeacoffee.com/LazyAdmin"><img src="images/bmc-button.png" /></a>
+<a href="https://www.buymeacoffee.com/LazyAdmin"><img src="images/bmc-button.png" width="150px" /></a>
 
 ## Screenshots
 
