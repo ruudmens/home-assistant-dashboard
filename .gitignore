@@ -1,2 +1,5 @@
 secrets.yaml
 .DS_Store
+
+# Isolated local worktrees
+.worktrees/
