@@ -1,0 +1,22 @@
+dashboards:
+  - url_path: luxury-home
+    title: Luxury Home
+    icon: mdi:home-heart
+    mode: storage
+    show_in_sidebar: true
+    require_admin: false
+    config: dashboards/luxury_home.yaml
+  - url_path: luxury-garage
+    title: Luxury Garage
+    icon: mdi:garage
+    mode: storage
+    show_in_sidebar: true
+    require_admin: false
+    config: dashboards/luxury_garage.yaml
+  - url_path: luxury-remote
+    title: Luxury Remote
+    icon: mdi:remote
+    mode: storage
+    show_in_sidebar: true
+    require_admin: false
+    config: dashboards/luxury_remote.yaml
