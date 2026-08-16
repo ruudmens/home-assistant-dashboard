@@ -169,6 +169,12 @@ Remove-Item Env:HA_TOKEN
 Remove-Variable secureToken
 ```
 
+After dry-run or apply, inspect the saved evidence for credential markers. Expected output: no matches.
+
+```powershell
+Select-String -Path artifacts\*.json -Pattern 'access_token|HA_TOKEN|Bearer'
+```
+
 After verified success, close-frame warnings are non-fatal and appear in the result warnings. Revoke the temporary token from your Home Assistant profile after verification.
 
 ### Rollback and cleanup
