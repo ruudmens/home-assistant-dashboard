@@ -76,6 +76,11 @@ class LuxuryRemoteTests(unittest.TestCase):
         cls.view = cls.config["views"][0]
 
     def test_uses_one_phone_first_dense_sections_view(self):
+        self.assertEqual(self.config["title"], "Luxury Remote")
+        self.assertEqual(
+            (self.view["title"], self.view["path"], self.view["icon"]),
+            ("Remote", "remote", "mdi:remote"),
+        )
         assert_sections_view(self, self.config, max_columns=1)
         self.assertTrue(self.view["dense_section_placement"])
 
@@ -84,9 +89,14 @@ class LuxuryRemoteTests(unittest.TestCase):
         self.assertEqual(header["layout"], "responsive")
         self.assertIn("card", header)
         self.assertNotIn("cards", header)
+        self.assertEqual(header["card"]["type"], "markdown")
         self.assertEqual(
             header["card"]["content"],
             "# Luxury Remote\nThe most useful controls, ordered for one-handed access.\n",
+        )
+        self.assertEqual(
+            header["card"]["card_mod"]["style"],
+            "ha-card {\n  background: transparent;\n  border: 0;\n  color: #f6f3ec;\n}\n",
         )
 
     def test_references_the_exact_remote_entity_set(self):
@@ -117,6 +127,8 @@ class LuxuryRemoteTests(unittest.TestCase):
             cards = cards_for_entity(self.config, entity_id)
             self.assertTrue(cards, entity_id)
             self.assertTrue(all(card.get("tap_action", {}).get("confirmation") for card in cards))
+            self.assertTrue(all(card.get("type") == "custom:button-card" for card in cards))
+            self.assertTrue(all(card.get("show_state") is True for card in cards))
             card = cards[0]
             self.assertEqual(card["name"], name)
             self.assertEqual(card["tap_action"]["action"], action)
@@ -128,16 +140,23 @@ class LuxuryRemoteTests(unittest.TestCase):
             self.assertEqual({state["value"]: state["color"] for state in lock["state"]}, LOCK_COLORS)
 
     def test_quick_lights_are_sole_amber_cards_and_scene_targets_itself(self):
-        for entity_id in (
-            "light.main_light",
-            "light.kitchen_light",
-            "light.bedroom_light",
-            "light.garage_2",
-        ):
+        expected_lights = {
+            "light.main_light": "Main",
+            "light.kitchen_light": "Kitchen",
+            "light.bedroom_light": "Bedroom",
+            "light.garage_2": "Garage",
+        }
+        for entity_id, name in expected_lights.items():
             cards = cards_for_entity(self.config, entity_id)
             self.assertEqual(len(cards), 1, entity_id)
+            self.assertEqual(cards[0]["type"], "tile")
+            self.assertEqual(cards[0]["name"], name)
             self.assertEqual(cards[0]["color"], "amber")
         scene = cards_for_entity(self.config, "scene.all_lights")[0]
+        self.assertEqual(
+            (scene["type"], scene["name"], scene["icon"]),
+            ("button", "All Lights", "mdi:lightbulb-group"),
+        )
         self.assertEqual(
             scene["tap_action"],
             {
@@ -149,6 +168,7 @@ class LuxuryRemoteTests(unittest.TestCase):
 
     def test_section_headings_and_phone_backgrounds_are_in_exact_order(self):
         sections = self.view["sections"]
+        self.assertTrue(all(section["type"] == "grid" for section in sections))
         self.assertEqual(
             [section["cards"][0]["heading"] for section in sections],
             [
@@ -202,12 +222,12 @@ class LuxuryRemoteTests(unittest.TestCase):
     def test_people_and_presence_cards_have_exact_entities_and_names(self):
         people_cards = self.view["sections"][4]["cards"][1:]
         self.assertEqual(
-            [(card["entity"], card["name"]) for card in people_cards],
+            [(card["type"], card["entity"], card["name"]) for card in people_cards],
             [
-                ("person.kcam", "Kcam"),
-                ("person.mom", "Mom"),
-                ("binary_sensor.livingroom_matter_pir_occupancy", "Living Room occupancy"),
-                ("binary_sensor.zachary_s_s21_ultra_presence", "Zachary presence"),
+                ("tile", "person.kcam", "Kcam"),
+                ("tile", "person.mom", "Mom"),
+                ("tile", "binary_sensor.livingroom_matter_pir_occupancy", "Living Room occupancy"),
+                ("tile", "binary_sensor.zachary_s_s21_ultra_presence", "Zachary presence"),
             ],
         )
 
