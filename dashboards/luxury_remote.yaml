@@ -73,6 +73,8 @@ views:
                 color: '#d88d75'
               - value: unavailable
                 color: '#777972'
+              - value: unknown
+                color: '#777972'
             tap_action:
               action: more-info
               confirmation:
@@ -95,7 +97,11 @@ views:
                 color: '#d5b77a'
               - value: unlocking
                 color: '#d5b77a'
+              - value: opening
+                color: '#d5b77a'
               - value: unavailable
+                color: '#777972'
+              - value: unknown
                 color: '#777972'
             tap_action:
               action: toggle
@@ -119,7 +125,11 @@ views:
                 color: '#d5b77a'
               - value: unlocking
                 color: '#d5b77a'
+              - value: opening
+                color: '#d5b77a'
               - value: unavailable
+                color: '#777972'
+              - value: unknown
                 color: '#777972'
             tap_action:
               action: toggle

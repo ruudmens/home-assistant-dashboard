@@ -2,8 +2,12 @@
 
 from copy import deepcopy
 from pathlib import Path
+import tempfile
 import unittest
 
+import yaml
+
+from tests import config_assertions
 from tests.config_assertions import (
     assert_sections_view,
     cards_for_entity,
@@ -52,6 +56,7 @@ ALARM_COLORS = {
     "disarming": "#d5b77a",
     "triggered": "#d88d75",
     "unavailable": "#777972",
+    "unknown": "#777972",
 }
 LOCK_COLORS = {
     "locked": "#a7c7a0",
@@ -60,7 +65,9 @@ LOCK_COLORS = {
     "jammed": "#d88d75",
     "locking": "#d5b77a",
     "unlocking": "#d5b77a",
+    "opening": "#d5b77a",
     "unavailable": "#777972",
+    "unknown": "#777972",
 }
 
 
@@ -69,6 +76,13 @@ class LuxuryRemoteTests(unittest.TestCase):
         missing_path = "dashboards/does_not_exist.yaml"
         with self.assertRaises(FileNotFoundError):
             load_config(ROOT, missing_path)
+
+    def test_load_config_rejects_duplicate_yaml_mapping_keys(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            duplicate_config = Path(temporary_directory) / "duplicate.yaml"
+            duplicate_config.write_text("title: First\ntitle: Second\n", encoding="utf-8")
+            with self.assertRaisesRegex(yaml.constructor.ConstructorError, "duplicate mapping key"):
+                load_config(duplicate_config.parent, duplicate_config.name)
 
     @classmethod
     def setUpClass(cls):
@@ -101,6 +115,19 @@ class LuxuryRemoteTests(unittest.TestCase):
 
     def test_references_the_exact_remote_entity_set(self):
         self.assertEqual(referenced_entities(self.config), EXPECTED)
+
+    def test_entity_references_have_the_exact_global_occurrence_counts(self):
+        expected_counts = {entity_id: 1 for entity_id in EXPECTED}
+        expected_counts.update({"scene.all_lights": 2, "script.radio_play": 2})
+        self.assertEqual(config_assertions.referenced_entity_counts(self.config), expected_counts)
+
+        duplicate_scene = deepcopy(self.config)
+        duplicate_scene["views"][0]["sections"][1]["cards"].append(
+            deepcopy(cards_for_entity(duplicate_scene, "scene.all_lights")[0])
+        )
+        self.assertNotEqual(
+            config_assertions.referenced_entity_counts(duplicate_scene), expected_counts
+        )
 
     def test_security_cards_have_confirmed_exact_actions_and_state_colors(self):
         expected_actions = {
@@ -139,6 +166,25 @@ class LuxuryRemoteTests(unittest.TestCase):
             lock = cards_for_entity(self.config, entity_id)[0]
             self.assertEqual({state["value"]: state["color"] for state in lock["state"]}, LOCK_COLORS)
 
+    def test_security_cards_have_no_unconfirmed_or_unsupported_action_channels(self):
+        for entity_id in (
+            "alarm_control_panel.alarmo",
+            "lock.virtual_front_door_lock",
+            "lock.back_door",
+        ):
+            self.assertEqual(
+                config_assertions.security_action_violations(cards_for_entity(self.config, entity_id)[0]),
+                [],
+                entity_id,
+            )
+
+        unsafe_lock = deepcopy(cards_for_entity(self.config, "lock.virtual_front_door_lock")[0])
+        unsafe_lock["hold_action"] = {"action": "toggle"}
+        self.assertIn(
+            "hold_action action 'toggle' requires confirmation",
+            config_assertions.security_action_violations(unsafe_lock),
+        )
+
     def test_quick_lights_are_sole_amber_cards_and_scene_targets_itself(self):
         expected_lights = {
             "light.main_light": "Main",
@@ -169,6 +215,7 @@ class LuxuryRemoteTests(unittest.TestCase):
     def test_section_headings_and_phone_backgrounds_are_in_exact_order(self):
         sections = self.view["sections"]
         self.assertTrue(all(section["type"] == "grid" for section in sections))
+        self.assertEqual([len(section["cards"]) for section in sections], [4, 6, 3, 3, 5, 5, 3])
         self.assertEqual(
             [section["cards"][0]["heading"] for section in sections],
             [
@@ -288,6 +335,38 @@ class LuxuryRemoteTests(unittest.TestCase):
         self.assertFalse(any("irrigation" in str(node).lower() for node in walk(self.config)))
         for forbidden in ("your_", "replace_me", "irrigation", "source"):
             self.assertNotIn(forbidden, serialized)
+
+    def test_global_actions_use_only_the_explicit_remote_allowlist(self):
+        self.assertEqual(config_assertions.action_contract_violations(self.config), [])
+
+        restart_mutant = deepcopy(self.config)
+        restart_mutant["views"][0]["sections"][0]["cards"][1]["hold_action"] = {
+            "action": "perform-action",
+            "perform_action": "homeassistant.restart",
+        }
+        self.assertIn(
+            "perform_action 'homeassistant.restart' is not allowed",
+            config_assertions.action_contract_violations(restart_mutant),
+        )
+
+        unsupported_action_mutant = deepcopy(self.config)
+        unsupported_action_mutant["views"][0]["sections"][0]["cards"][1]["hold_action"] = {
+            "action": "call-service"
+        }
+        self.assertIn(
+            "action 'call-service' is not allowed",
+            config_assertions.action_contract_violations(unsupported_action_mutant),
+        )
+
+    def test_config_has_no_credentials_and_rejects_access_token_mutant(self):
+        self.assertEqual(config_assertions.credential_hygiene_violations(self.config), [])
+
+        credential_mutant = deepcopy(self.config)
+        credential_mutant["access_token"] = "private-value"
+        self.assertIn(
+            "credential marker 'access_token' found in key 'access_token'",
+            config_assertions.credential_hygiene_violations(credential_mutant),
+        )
 
 
 if __name__ == "__main__":
