@@ -1,0 +1,418 @@
+title: Luxury Cameras
+button_card_templates:
+  camera_nav:
+    show_state: false
+    size: 26px
+    styles:
+      card:
+        - border-radius: 18px
+        - border: 1px solid rgba(103, 232, 249, 0.18)
+        - background: linear-gradient(145deg, rgba(17, 28, 48, 0.96), rgba(8, 13, 25, 0.98))
+        - color: '#e8f7ff'
+        - padding: 16px
+        - box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22)
+      icon:
+        - color: '#67e8f9'
+      name:
+        - font-size: 13px
+        - font-weight: 600
+views:
+  - title: Cameras
+    path: cameras
+    icon: mdi:cctv
+    type: sections
+    max_columns: 4
+    dense_section_placement: true
+    header:
+      layout: responsive
+      badges_position: bottom
+      card:
+        type: custom:button-card
+        name: Luxury Cameras
+        label: 17 cameras
+        show_icon: true
+        show_label: true
+        icon: mdi:cctv
+        custom_fields:
+          status: Scrypted NVR
+        styles:
+          grid:
+            - grid-template-areas: '"i n status" "i l status"'
+            - grid-template-columns: min-content 1fr min-content
+            - grid-template-rows: min-content min-content
+            - column-gap: 16px
+          card:
+            - border-radius: 24px
+            - border: 1px solid rgba(103, 232, 249, 0.22)
+            - background: linear-gradient(135deg, rgba(15, 28, 49, 0.98), rgba(16, 14, 38, 0.96))
+            - color: '#f4fbff'
+            - padding: 22px
+            - box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28)
+          icon:
+            - width: 34px
+            - color: '#67e8f9'
+          name:
+            - justify-self: start
+            - font-size: 24px
+            - font-weight: 700
+            - letter-spacing: -0.4px
+          label:
+            - justify-self: start
+            - color: rgba(218, 238, 250, 0.68)
+            - font-size: 12px
+            - text-transform: uppercase
+            - letter-spacing: 1.2px
+          custom_fields:
+            status:
+              - justify-self: end
+              - color: '#c4b5fd'
+              - font-size: 11px
+              - font-weight: 700
+              - text-transform: uppercase
+              - letter-spacing: 1px
+    sections:
+      - type: grid
+        column_span: 4
+        background:
+          color: '#091321'
+          opacity: 94
+        cards:
+          - type: heading
+            heading: LIVE NOW
+            icon: mdi:record-circle-outline
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(4, minmax(0, 1fr))
+              grid-gap: 14px
+              mediaquery:
+                "(max-width: 1100px)":
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                "(max-width: 650px)":
+                  grid-template-columns: minmax(0, 1fr)
+            cards:
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Front Door
+                    card_mod:
+                      style: |
+                        ha-card {
+                          background: rgba(12, 24, 42, 0.96);
+                          border: 1px solid rgba(103, 232, 249, 0.16);
+                          border-radius: 16px 16px 0 0;
+                          color: #e8f7ff;
+                          font-weight: 650;
+                          padding: 4px 14px;
+                        }
+                  - type: custom:scrypted-nvr-camera
+                    id: 107
+                    live: true
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Back Yard
+                    card_mod:
+                      style: |
+                        ha-card {
+                          background: rgba(12, 24, 42, 0.96);
+                          border: 1px solid rgba(103, 232, 249, 0.16);
+                          border-radius: 16px 16px 0 0;
+                          color: #e8f7ff;
+                          font-weight: 650;
+                          padding: 4px 14px;
+                        }
+                  - type: custom:scrypted-nvr-camera
+                    id: 266
+                    live: true
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Bedroom
+                    card_mod:
+                      style: |
+                        ha-card {
+                          background: rgba(12, 24, 42, 0.96);
+                          border: 1px solid rgba(103, 232, 249, 0.16);
+                          border-radius: 16px 16px 0 0;
+                          color: #e8f7ff;
+                          font-weight: 650;
+                          padding: 4px 14px;
+                        }
+                  - type: custom:scrypted-nvr-camera
+                    id: 124
+                    live: true
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Living Room
+                    card_mod:
+                      style: |
+                        ha-card {
+                          background: rgba(12, 24, 42, 0.96);
+                          border: 1px solid rgba(103, 232, 249, 0.16);
+                          border-radius: 16px 16px 0 0;
+                          color: #e8f7ff;
+                          font-weight: 650;
+                          padding: 4px 14px;
+                        }
+                  - type: custom:scrypted-nvr-camera
+                    id: 268
+                    live: true
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+      - type: grid
+        column_span: 4
+        background:
+          color: '#0d1222'
+          opacity: 94
+        cards:
+          - type: heading
+            heading: ALL CAMERAS
+            icon: mdi:cctv
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(4, minmax(0, 1fr))
+              grid-gap: 14px
+              mediaquery:
+                "(max-width: 1100px)":
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                "(max-width: 650px)":
+                  grid-template-columns: minmax(0, 1fr)
+            cards:
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Back Yard 2
+                  - type: custom:scrypted-nvr-camera
+                    id: 267
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Blink Backyard
+                  - type: custom:scrypted-nvr-camera
+                    id: 287
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Blink Backyard 2
+                  - type: custom:scrypted-nvr-camera
+                    id: 286
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: GNT2 Camera
+                  - type: custom:scrypted-nvr-camera
+                    id: 289
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Living Room 2
+                  - type: custom:scrypted-nvr-camera
+                    id: 288
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Mini Camera
+                  - type: custom:scrypted-nvr-camera
+                    id: 290
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: OG Camera
+                  - type: custom:scrypted-nvr-camera
+                    id: 269
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: custom:stack-in-card
+                card_mod:
+                  style: |
+                    ha-card {
+                      overflow: hidden;
+                      border-radius: 18px;
+                      background: rgba(10, 20, 36, 0.98);
+                    }
+                    scrypted-nvr-camera {
+                      clip-path: inset(32px 0 0 0);
+                      margin-top: -32px;
+                    }
+                cards:
+                  - type: markdown
+                    content: RTSP Camera A
+                  - type: custom:scrypted-nvr-camera
+                    id: 250
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: custom:stack-in-card
+                card_mod:
+                  style: |
+                    ha-card {
+                      overflow: hidden;
+                      border-radius: 18px;
+                      background: rgba(10, 20, 36, 0.98);
+                    }
+                    scrypted-nvr-camera {
+                      clip-path: inset(32px 0 0 0);
+                      margin-top: -32px;
+                    }
+                cards:
+                  - type: markdown
+                    content: RTSP Camera B
+                  - type: custom:scrypted-nvr-camera
+                    id: 264
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Tapo C211 A
+                  - type: custom:scrypted-nvr-camera
+                    id: 171
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: Tapo C211 B
+                  - type: custom:scrypted-nvr-camera
+                    id: 173
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: U1
+                  - type: custom:scrypted-nvr-camera
+                    id: 270
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: V4
+                  - type: custom:scrypted-nvr-camera
+                    id: 271
+                    destination: low-resolution
+                    imageClick: popup
+                    videoClick: popup
+                    theme: dark
+                    aspectRatio: 16/9
+      - type: grid
+        column_span: 4
+        background:
+          color: '#101328'
+          opacity: 92
+        cards:
+          - type: heading
+            heading: EVENT REEL
+            icon: mdi:filmstrip
+          - type: custom:scrypted-nvr-events-carousel
+            click: ha
+            grid_options:
+              columns: full
+      - type: grid
+        column_span: 4
+        background:
+          color: '#091321'
+          opacity: 92
+        cards:
+          - type: heading
+            heading: LUXURY DASHBOARDS
+            icon: mdi:view-dashboard-outline
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(3, minmax(0, 1fr))
+              grid-gap: 14px
+              mediaquery:
+                "(max-width: 650px)":
+                  grid-template-columns: minmax(0, 1fr)
+            cards:
+              - type: custom:button-card
+                template: camera_nav
+                name: Home
+                icon: mdi:home-heart
+                tap_action:
+                  action: navigate
+                  navigation_path: /luxury-home/home
+              - type: custom:button-card
+                template: camera_nav
+                name: Garage
+                icon: mdi:garage
+                tap_action:
+                  action: navigate
+                  navigation_path: /luxury-garage/garage
+              - type: custom:button-card
+                template: camera_nav
+                name: Remote
+                icon: mdi:remote
+                tap_action:
+                  action: navigate
+                  navigation_path: /luxury-remote/remote
