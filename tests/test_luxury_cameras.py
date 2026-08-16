@@ -44,15 +44,28 @@ EXPECTED_NAVIGATION_PATHS = [
     "/luxury-remote/remote",
 ]
 EXPECTED_HEADER_PHRASES = ("Luxury Cameras", "17 cameras", "Scrypted NVR")
-PRIVACY_MASK_MARKER = "mask-camera-status-strip-v2"
 RFC1918 = re.compile(
     r"(?<!\d)(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|"
     r"172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(?!\d)"
 )
 DIRECT_URL_PREFIX = re.compile(r"\b(?:https?|wss?|rtsps?)://", re.IGNORECASE)
 SCHEME_RELATIVE_URL_PREFIX = re.compile(r"(?<![:/])//(?=[A-Za-z0-9\[])")
-RELATIVE_PATH = re.compile(r"^/[A-Za-z0-9_./-]+(?:\?[^\s]*)?$")
-BEARER_VALUE = re.compile(r"(?:^|\s)bearer\s+\S+", re.IGNORECASE)
+RELATIVE_PATH_VALUE = re.compile(
+    r"(?<![:/A-Za-z0-9_])/(?![/*])[^\s\"'<>)}]+"
+)
+RAW_CREDENTIAL_VALUE_PATTERNS = (
+    re.compile(
+        r"(?<![A-Za-z0-9_])(?:access_token|accessToken)\s*[:=]",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?<![A-Za-z0-9_])token\s*[:=]", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z0-9_])HA_TOKEN(?![A-Za-z0-9_])", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z0-9_])bearer\s+\S+", re.IGNORECASE),
+    re.compile(
+        r"(?<![A-Za-z0-9_])authorization\s*[:=]\s*\S+",
+        re.IGNORECASE,
+    ),
+)
 JWT_LIKE = re.compile(
     r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
     r"\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])"
@@ -142,9 +155,29 @@ class CameraContractHelperTests(unittest.TestCase):
                 }
             ],
         }
+        button_header = {
+            "title": "Luxury Cameras",
+            "views": [
+                {
+                    "sections": [
+                        {
+                            "cards": [
+                                {
+                                    "type": "custom:button-card",
+                                    "name": "Luxury Cameras",
+                                    "label": "17 cameras",
+                                    "custom_fields": {"status": "Scrypted NVR"},
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+        }
 
         self.assertEqual(matching_camera_headers(title_only), [])
         self.assertEqual(len(matching_camera_headers(section_header)), 1)
+        self.assertEqual(len(matching_camera_headers(button_header)), 1)
         self.assertEqual(matching_camera_headers(scattered_header), [])
 
     def test_camera_pairing_requires_one_exact_label_and_camera_per_grid_item(self):
@@ -214,6 +247,12 @@ class CameraContractHelperTests(unittest.TestCase):
             {"apiKey": "example"},
             {"privateKey": "example"},
             {"accessToken": "example"},
+            {"content": "token=example"},
+            {"content": "access_token: example"},
+            {"content": "accessToken=example"},
+            {"content": "HA_TOKEN"},
+            {"content": "Authorization: Bearer example"},
+            {"content": jwt_like},
             {"header": "Bearer example"},
             {"endpoint": "rtsp://camera.example/live"},
             {"endpoint": "rtsps://camera.example/live"},
@@ -233,7 +272,7 @@ class CameraContractHelperTests(unittest.TestCase):
         config = {
             "card_mod": {
                 "style": (
-                    f"/* {PRIVACY_MASK_MARKER} */\n"
+                    "/* mask-camera-status-strip-v2 */\n"
                     "ha-card { overflow: hidden; clip-path: inset(32px 0 0 0); "
                     "margin-top: -32px; }"
                 )
@@ -250,7 +289,6 @@ class CameraContractHelperTests(unittest.TestCase):
             "type": "custom:stack-in-card",
             "card_mod": {
                 "style": (
-                    f"/* {PRIVACY_MASK_MARKER} */\n"
                     "ha-card { overflow: hidden; }\n"
                     "scrypted-nvr-camera { clip-path: inset(32px 0 0 0); "
                     "margin-top: -32px; }"
@@ -270,17 +308,17 @@ class CameraContractHelperTests(unittest.TestCase):
         wrong_stack["cards"][0]["type"] = "vertical-stack"
         missing_crop = deepcopy(valid_grid)
         missing_crop["cards"][0]["card_mod"]["style"] = (
-            f"/* {PRIVACY_MASK_MARKER} */ overflow: hidden;"
+            "scrypted-nvr-camera { overflow: hidden; }"
         )
-        missing_marker = deepcopy(valid_grid)
-        missing_marker["cards"][0]["card_mod"]["style"] = missing_marker["cards"][0][
+        translate_crop = deepcopy(valid_grid)
+        translate_crop["cards"][0]["card_mod"]["style"] = translate_crop["cards"][0][
             "card_mod"
-        ]["style"].replace(PRIVACY_MASK_MARKER, "camera-status-crop")
+        ]["style"].replace("margin-top: -32px;", "transform: translateY(-32px);")
 
         self.assertEqual(rtsp_privacy_violations(valid_grid), [])
+        self.assertEqual(rtsp_privacy_violations(translate_crop), [])
         self.assertTrue(rtsp_privacy_violations(wrong_stack))
         self.assertTrue(rtsp_privacy_violations(missing_crop))
-        self.assertTrue(rtsp_privacy_violations(missing_marker))
 
     def test_static_safety_checker_allows_only_exact_relative_navigation(self):
         config = {
@@ -299,6 +337,11 @@ class CameraContractHelperTests(unittest.TestCase):
         )
         self.assertTrue(
             static_safety_violations({"url": "//camera.example/live"})
+        )
+        self.assertTrue(
+            static_safety_violations(
+                {"resource": "/endpoint/@scrypted/nvr/assets/web-components.js"}
+            )
         )
 
 
@@ -365,7 +408,7 @@ def camera_pairs_in_grid(grid):
 
 
 def header_cards(config):
-    """Return individual markdown/header cards without aggregating sections."""
+    """Return actual cards while excluding view, section, and layout containers."""
     views = config.get("views", [])
     if len(views) != 1 or not isinstance(views[0], dict):
         return []
@@ -374,7 +417,7 @@ def header_cards(config):
     header = view.get("header")
     if isinstance(header, dict) and isinstance(header.get("card"), dict):
         header_card = header["card"]
-        if header_card.get("type") in {"markdown", "heading"}:
+        if is_actual_card_mapping(header_card):
             cards.append(header_card)
     for section in view.get("sections", []):
         if not isinstance(section, dict):
@@ -385,9 +428,24 @@ def header_cards(config):
             cards.extend(
                 node
                 for node in walk(card)
-                if isinstance(node, dict) and node.get("type") in {"markdown", "heading"}
+                if is_actual_card_mapping(node)
             )
     return cards
+
+
+def is_actual_card_mapping(value):
+    """Return whether *value* is a card rather than an aggregating layout wrapper."""
+    if not isinstance(value, dict) or not isinstance(value.get("type"), str):
+        return False
+    card_type = value["type"].casefold()
+    aggregate_types = {
+        "grid",
+        "horizontal-stack",
+        "vertical-stack",
+        "custom:layout-card",
+        "custom:stack-in-card",
+    }
+    return card_type not in aggregate_types and "layout" not in card_type
 
 
 def matching_camera_headers(config):
@@ -440,8 +498,6 @@ def static_safety_violations(config):
             if is_likely_secret_key(normalized):
                 violations.append(f"credential key {key!r}")
                 for secret_value in scalar_strings(value):
-                    if JWT_LIKE.search(secret_value):
-                        violations.append("JWT-like value under credential key")
                     if OPAQUE_SECRET_LIKE.search(secret_value):
                         violations.append("opaque value under credential key")
             if normalized in FORBIDDEN_CONFIG_KEYS or any(
@@ -468,8 +524,11 @@ def static_safety_violations(config):
                 violations.append("unsafe event click")
 
     for scalar in scalar_strings(config):
-        if BEARER_VALUE.search(scalar):
-            violations.append("bearer credential value")
+        for pattern in RAW_CREDENTIAL_VALUE_PATTERNS:
+            if pattern.search(scalar):
+                violations.append("raw credential marker")
+        if JWT_LIKE.search(scalar):
+            violations.append("JWT-like value")
         for url in scalar_urls(scalar):
             try:
                 if url.startswith("//"):
@@ -484,11 +543,25 @@ def static_safety_violations(config):
                 violations.append("credential-bearing URL")
             if parsed.query:
                 violations.append("query-bearing URL")
-        if RELATIVE_PATH.fullmatch(scalar) and scalar not in EXPECTED_NAVIGATION_PATHS:
-            violations.append(f"unapproved absolute path {scalar!r}")
-        if RELATIVE_PATH.fullmatch(scalar) and "?" in scalar:
-            violations.append(f"query-bearing path {scalar!r}")
+        for path_match in RELATIVE_PATH_VALUE.finditer(scalar):
+            path = path_match.group(0).rstrip(",;")
+            if path not in EXPECTED_NAVIGATION_PATHS:
+                violations.append(f"unapproved absolute path {path!r}")
+            if "?" in path:
+                violations.append(f"query-bearing path {path!r}")
     return violations
+
+
+def rtsp_privacy_wrapper_ids(grid):
+    """Return private RTSP IDs with direct stack-in-card privacy wrappers."""
+    wrapper_ids = []
+    for item in grid.get("cards", []):
+        if not isinstance(item, dict) or item.get("type") != "custom:stack-in-card":
+            continue
+        cameras = camera_cards_in(item)
+        if len(cameras) == 1 and cameras[0].get("id") in {250, 264}:
+            wrapper_ids.append(cameras[0]["id"])
+    return wrapper_ids
 
 
 def rtsp_privacy_violations(grid):
@@ -509,13 +582,28 @@ def rtsp_privacy_violations(grid):
             violations.append(f"camera {camera_id} privacy wrapper needs local card-mod")
             continue
         required_rules = (
-            PRIVACY_MASK_MARKER in style,
             "scrypted-nvr-camera" in style,
             re.search(r"overflow\s*:\s*hidden\s*;", style, re.IGNORECASE) is not None,
-            re.search(r"clip-path\s*:\s*inset\([^)]*\)\s*;", style, re.IGNORECASE)
+            re.search(
+                r"clip-path\s*:\s*inset\(\s*[1-9]\d*(?:\.\d+)?px\b[^)]*\)\s*;",
+                style,
+                re.IGNORECASE,
+            )
             is not None,
-            re.search(r"margin-top\s*:\s*-\d+(?:\.\d+)?px\s*;", style, re.IGNORECASE)
-            is not None,
+            (
+                re.search(
+                    r"margin(?:-top)?\s*:\s*-\d+(?:\.\d+)?px(?:\s+[^;]+)?\s*;",
+                    style,
+                    re.IGNORECASE,
+                )
+                is not None
+                or re.search(
+                    r"translateY\(\s*-\d+(?:\.\d+)?px\s*\)",
+                    style,
+                    re.IGNORECASE,
+                )
+                is not None
+            ),
         )
         if not all(required_rules):
             violations.append(f"camera {camera_id} privacy crop rule is incomplete")
@@ -576,7 +664,7 @@ class LuxuryCamerasTests(unittest.TestCase):
         self.assertTrue(all("live" not in card for card in secondary_cards))
         self.assertEqual(primary_cards + secondary_cards, self.camera_cards)
         self.assertEqual(rtsp_privacy_violations(secondary_grid), [])
-        self.assertEqual(self.text.count(PRIVACY_MASK_MARKER), 2)
+        self.assertEqual(rtsp_privacy_wrapper_ids(secondary_grid), [250, 264])
 
     def test_every_camera_card_uses_the_safe_low_resolution_contract(self):
         expected = {
