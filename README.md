@@ -125,10 +125,6 @@ Nothing here will work until you point it at your own devices. Search and replac
 - **Theme not applying**: reload themes in Developer Tools, hard-refresh the browser.
 - **Irrigation/mower automations doing nothing**: check that `sensor.soil_moisture_balance`, `sensor.open_meteo_*`, and `sensor.netatmo_rain_24h` have real values in Developer Tools → States before expecting the automations to fire.
 
-## License
-
-See [LICENSE](LICENSE). Feel free to fork, adapt, and share.
-
 ## Responsive Luxury dashboards
 
 The responsive Luxury dashboards are additive storage-mode dashboards. Their final URLs are:
@@ -139,7 +135,7 @@ The responsive Luxury dashboards are additive storage-mode dashboards. Their fin
 | Luxury Garage | `/luxury-garage/garage` |
 | Luxury Remote | `/luxury-remote/remote` |
 
-The deployer is additive: it stops before applying changes when it finds a dashboard, frontend-panel, or duplicate-path collision. It validates every live entity and required HACS resource, reads saved configurations back, and verifies both the original records and newly created records. Its automatic reverse rollback is limited to dashboards confirmed as created by the run or safely reconciled to that run.
+The deployer is additive: it stops before applying changes when it finds a dashboard, frontend-panel, or duplicate-path collision. It validates every collected dashboard entity reference against current Home Assistant states and validates every required HACS resource, reads saved configurations back, and verifies both the original records and newly created records. Its automatic reverse rollback is limited to dashboards confirmed as created by the run or safely reconciled to that run.
 
 ### Local validation
 
@@ -155,28 +151,75 @@ Set the Home Assistant URL, enter a temporary token only through a secure prompt
 ```powershell
 $env:HA_URL = 'https://kcam-hassio.duckdns.org:8123'
 $secureToken = Read-Host -AsSecureString 'Home Assistant temporary token'
-$env:HA_TOKEN = [System.Net.NetworkCredential]::new('', $secureToken).Password
-python tools/deploy_dashboards.py
+try {
+    $env:HA_TOKEN = [System.Net.NetworkCredential]::new('', $secureToken).Password
+    if ([string]::IsNullOrEmpty($env:HA_TOKEN)) {
+        throw 'Dashboard deployment credential setup failed.'
+    }
+
+    python tools/deploy_dashboards.py
+    $deployExit = $LASTEXITCODE
+
+    $markerHit = $false
+    $tokenHit = $false
+    if (Test-Path -Path 'artifacts\*.json') {
+        $markerHit = Select-String -Path artifacts\*.json -Pattern 'access_token|HA_TOKEN|Bearer' -Quiet
+        $tokenHit = Select-String -Path artifacts\*.json -Pattern $env:HA_TOKEN -SimpleMatch -Quiet
+    }
+    if ($markerHit -or $tokenHit) {
+        throw 'Credential-like content found in deployment artifacts.'
+    }
+    if ($deployExit -ne 0) {
+        throw 'Dashboard dry run failed.'
+    }
+}
+finally {
+    Remove-Item Env:HA_TOKEN -ErrorAction SilentlyContinue
+    Remove-Variable secureToken -ErrorAction SilentlyContinue
+}
 ```
 
-A successful dry run prints its status and writes credential-free deployment evidence to ignored `artifacts/`. Never show a raw token. Files in `artifacts/` must contain no `access_token`, `HA_TOKEN`, or `Bearer` value.
+A successful dry run prints its status and writes credential-free deployment evidence to ignored `artifacts/`. The credential scan is silent; no matches and continued execution are the expected result. Never show a raw token. Files in `artifacts/` must contain no `access_token`, `HA_TOKEN`, `Bearer`, or current token value.
 
 To apply after a successful preflight:
 
 ```powershell
-python tools/deploy_dashboards.py --apply
-Remove-Item Env:HA_TOKEN
-Remove-Variable secureToken
+$env:HA_URL = 'https://kcam-hassio.duckdns.org:8123'
+$secureToken = Read-Host -AsSecureString 'Home Assistant temporary token'
+try {
+    $env:HA_TOKEN = [System.Net.NetworkCredential]::new('', $secureToken).Password
+    if ([string]::IsNullOrEmpty($env:HA_TOKEN)) {
+        throw 'Dashboard deployment credential setup failed.'
+    }
+
+    python tools/deploy_dashboards.py --apply
+    $deployExit = $LASTEXITCODE
+
+    $markerHit = $false
+    $tokenHit = $false
+    if (Test-Path -Path 'artifacts\*.json') {
+        $markerHit = Select-String -Path artifacts\*.json -Pattern 'access_token|HA_TOKEN|Bearer' -Quiet
+        $tokenHit = Select-String -Path artifacts\*.json -Pattern $env:HA_TOKEN -SimpleMatch -Quiet
+    }
+    if ($markerHit -or $tokenHit) {
+        throw 'Credential-like content found in deployment artifacts.'
+    }
+    if ($deployExit -ne 0) {
+        throw 'Dashboard apply failed.'
+    }
+}
+finally {
+    Remove-Item Env:HA_TOKEN -ErrorAction SilentlyContinue
+    Remove-Variable secureToken -ErrorAction SilentlyContinue
+}
 ```
 
-After dry-run or apply, inspect the saved evidence for credential markers. Expected output: no matches.
-
-```powershell
-Select-String -Path artifacts\*.json -Pattern 'access_token|HA_TOKEN|Bearer'
-```
-
-After verified success, close-frame warnings are non-fatal and appear in the result warnings. Revoke the temporary token from your Home Assistant profile after verification.
+After verified success, close-frame warnings are non-fatal and appear in the result warnings. After success, failure, or abandonment, revoke the temporary token at **Home Assistant user profile -> Security -> Long-Lived Access Tokens**.
 
 ### Rollback and cleanup
 
-After a successful deployment, use **Settings -> Dashboards** to delete only the three Luxury dashboards. If an apply fails, the deployer automatically rolls back dashboards it owns and created; it reports incomplete or manual reconciliation when ownership cannot be proven.
+After a successful deployment, use **Settings -> Dashboards** to delete only dashboard records whose URL paths are exactly `luxury-home`, `luxury-garage`, and `luxury-remote`. If an apply fails, the deployer automatically rolls back dashboards it owns and created. Inspect `artifacts/deployment-failure.json`, specifically `status`, `deleted_dashboard_ids`, and `rollback_errors`; unresolved ambiguous results use `rollback_incomplete` and require manual review.
+
+## License
+
+See [LICENSE](LICENSE). Feel free to fork, adapt, and share.
