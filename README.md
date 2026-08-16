@@ -134,6 +134,7 @@ The responsive Luxury dashboards are additive storage-mode dashboards. Their fin
 | Luxury Home | `/luxury-home/home` |
 | Luxury Garage | `/luxury-garage/garage` |
 | Luxury Remote | `/luxury-remote/remote` |
+| Luxury Cameras | `/luxury-cameras/cameras` |
 
 The deployer is additive: it stops before applying changes when it finds a dashboard, frontend-panel, or duplicate-path collision. It validates every collected dashboard entity reference against current Home Assistant states and validates every required HACS resource, reads saved configurations back, and verifies both the original records and newly created records. Its automatic reverse rollback is limited to dashboards confirmed as created by the run or safely reconciled to that run.
 
@@ -215,6 +216,26 @@ finally {
 ```
 
 After verified success, close-frame warnings are non-fatal and appear in the result warnings. After success, failure, or abandonment, revoke the temporary token at **Home Assistant user profile -> Security -> Long-Lived Access Tokens**.
+
+### Luxury Cameras deployment
+
+Set up the Scrypted integration and its NVR frontend resources by following the [official Scrypted Home Assistant documentation](https://docs.scrypted.app/home-assistant.html). The four primary camera cards use low-resolution autoplay deliberately to keep Home Assistant responsive, while the remaining cameras wait for a click before playing.
+
+The camera-only manifest adds only `luxury-cameras`; it does not redeploy the original three Luxury dashboards. Reuse the same secure prompt and process-scoped `HA_TOKEN` handling from the workflow above, replacing its deployer command with the camera dry run:
+
+```powershell
+python tools/deploy_dashboards.py --manifest tools/scrypted_dashboard_manifest.yaml
+```
+
+Run the dry run first. Apply only after it succeeds:
+
+```powershell
+python tools/deploy_dashboards.py --manifest tools/scrypted_dashboard_manifest.yaml --apply
+```
+
+Registered dynamic Scrypted frontend resource URLs are resolved only in memory. Deployment artifacts record only sanitized suffixes, never the resolved URLs or their dynamic query values. Keep the same silent artifact scan, `try`/`finally` environment cleanup, and temporary-token revocation steps from the workflow above.
+
+For camera-only cleanup, use **Settings -> Dashboards** to delete only the dashboard record whose URL path is exactly `luxury-cameras`. Do not delete by title or change the original three-dashboard cleanup scope below.
 
 ### Rollback and cleanup
 
