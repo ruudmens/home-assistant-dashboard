@@ -48,7 +48,7 @@ RFC1918 = re.compile(
     r"(?<!\d)(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|"
     r"172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(?!\d)"
 )
-DIRECT_URL_PREFIX = re.compile(r"\b(?:https?|wss?|rtsps?)://", re.IGNORECASE)
+DIRECT_URL_PREFIX = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://")
 SCHEME_RELATIVE_URL_PREFIX = re.compile(r"(?<![:/])//(?=[A-Za-z0-9\[])")
 RELATIVE_PATH_VALUE = re.compile(
     r"(?<![:/A-Za-z0-9_])/(?![/*])[^\s\"'<>)}]+"
@@ -67,6 +67,18 @@ RAW_CREDENTIAL_VALUE_PATTERNS = (
         r"(?<![A-Za-z0-9_])authorization\s*[:=]\s*\S+",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"(?<![A-Za-z0-9_])(?:"
+        r"(?:api|private)(?:_|-)?key|"
+        r"(?:client|webhook)(?:_|-)?secret"
+        r")\s*[:=]",
+        re.IGNORECASE,
+    ),
+)
+CSS_RULE = re.compile(r"(?P<selector>[^{}]+)\{(?P<body>[^{}]*)\}", re.DOTALL)
+CARD_WRAPPER_SELECTOR = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:ha-card|\.card|#card|card)(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
 )
 JWT_LIKE = re.compile(
     r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
@@ -299,6 +311,18 @@ class CameraContractHelperTests(unittest.TestCase):
             {"content": "username=example"},
             {"content": "password: example"},
             {"content": "password=example"},
+            {"content": "apiKey: example"},
+            {"content": "api_key=example"},
+            {"content": "api-key: example"},
+            {"content": "privateKey=example"},
+            {"content": "private_key: example"},
+            {"content": "private-key=example"},
+            {"content": "clientSecret: example"},
+            {"content": "client_secret=example"},
+            {"content": "client-secret: example"},
+            {"content": "webhookSecret=example"},
+            {"content": "webhook_secret: example"},
+            {"content": "webhook-secret=example"},
             {"content": "HA_TOKEN"},
             {"content": "Authorization: Bearer example"},
             {"content": jwt_like},
@@ -307,6 +331,8 @@ class CameraContractHelperTests(unittest.TestCase):
             {"endpoint": "rtsps://camera.example/live"},
             {"endpoint": "https://ha.example/proxy/stream"},
             {"endpoint": "http://ha.example/proxy/stream"},
+            {"endpoint": "ftp://camera.example/archive"},
+            {"endpoint": "srt://camera.example/live"},
             {"endpoint": "wss://user:pass@camera.example/live?auth=example"},
             {"endpoint": "wss://[2001:db8::1]/live"},
             {"endpoint": "http://[malformed"},
@@ -363,11 +389,18 @@ class CameraContractHelperTests(unittest.TestCase):
         translate_crop["cards"][0]["card_mod"]["style"] = translate_crop["cards"][0][
             "card_mod"
         ]["style"].replace("margin-top: -32px;", "transform: translateY(-32px);")
+        unrelated_crop = deepcopy(valid_grid)
+        unrelated_crop["cards"][0]["card_mod"]["style"] = (
+            "ha-card { overflow: hidden; }\n"
+            "scrypted-nvr-camera { }\n"
+            "div { clip-path: inset(32px 0 0 0); margin-top: -32px; }"
+        )
 
         self.assertEqual(rtsp_privacy_violations(valid_grid), [])
         self.assertEqual(rtsp_privacy_violations(translate_crop), [])
         self.assertTrue(rtsp_privacy_violations(wrong_stack))
         self.assertTrue(rtsp_privacy_violations(missing_crop))
+        self.assertTrue(rtsp_privacy_violations(unrelated_crop))
 
     def test_static_safety_checker_allows_only_exact_relative_navigation(self):
         config = {
@@ -636,31 +669,35 @@ def rtsp_privacy_violations(grid):
         if not isinstance(style, str):
             violations.append(f"camera {camera_id} privacy wrapper needs local card-mod")
             continue
-        required_rules = (
-            "scrypted-nvr-camera" in style,
-            re.search(r"overflow\s*:\s*hidden\s*;", style, re.IGNORECASE) is not None,
-            re.search(
-                r"clip-path\s*:\s*inset\(\s*[1-9]\d*(?:\.\d+)?px\b[^)]*\)\s*;",
-                style,
-                re.IGNORECASE,
-            )
-            is not None,
-            (
-                re.search(
-                    r"margin(?:-top)?\s*:\s*-\d+(?:\.\d+)?px(?:\s+[^;]+)?\s*;",
-                    style,
-                    re.IGNORECASE,
-                )
-                is not None
-                or re.search(
-                    r"translateY\(\s*-\d+(?:\.\d+)?px\s*\)",
-                    style,
-                    re.IGNORECASE,
-                )
-                is not None
-            ),
+        rules = [match.groupdict() for match in CSS_RULE.finditer(style)]
+        target_rules = [
+            rule for rule in rules if "scrypted-nvr-camera" in rule["selector"].casefold()
+        ]
+        clip_pattern = re.compile(
+            r"clip-path\s*:\s*inset\(\s*[1-9]\d*(?:\.\d+)?px\b[^)]*\)\s*;",
+            re.IGNORECASE,
         )
-        if not all(required_rules):
+        negative_vertical_crop = re.compile(
+            r"(?:"
+            r"margin(?:-top)?\s*:\s*-\d+(?:\.\d+)?px(?:\s+[^;]+)?\s*;|"
+            r"translateY\(\s*-\d+(?:\.\d+)?px\s*\)"
+            r")",
+            re.IGNORECASE,
+        )
+        target_crop_is_complete = any(
+            clip_pattern.search(rule["body"])
+            and negative_vertical_crop.search(rule["body"])
+            for rule in target_rules
+        )
+        overflow_is_local = any(
+            re.search(r"overflow\s*:\s*hidden\s*;", rule["body"], re.IGNORECASE)
+            and (
+                "scrypted-nvr-camera" in rule["selector"].casefold()
+                or CARD_WRAPPER_SELECTOR.search(rule["selector"])
+            )
+            for rule in rules
+        )
+        if not target_crop_is_complete or not overflow_is_local:
             violations.append(f"camera {camera_id} privacy crop rule is incomplete")
     return violations
 
