@@ -1,0 +1,17 @@
+resource_requirements:
+  - type: module
+    url_suffix: /hacsfiles/lovelace-layout-card/layout-card.js
+  - type: module
+    url_suffix: /hacsfiles/button-card/button-card.js
+  - type: module
+    url_suffix: /endpoint/@scrypted/nvr/assets/web-components.js
+  - type: css
+    url_suffix: /endpoint/@scrypted/nvr/assets/web-components.css
+dashboards:
+  - url_path: luxury-cameras
+    title: Luxury Cameras
+    icon: mdi:cctv
+    mode: storage
+    show_in_sidebar: true
+    require_admin: false
+    config: dashboards/luxury_cameras.yaml
