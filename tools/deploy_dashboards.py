@@ -62,23 +62,42 @@ def make_ws_url(base_url):
 
 def load_entries(root, manifest_path):
     """Load the ordered manifest entries and their YAML dashboard configs."""
-    root = Path(root)
-    manifest_path = Path(manifest_path)
-    if not manifest_path.is_absolute():
-        manifest_path = root / manifest_path
     try:
+        root = Path(root).resolve()
+        manifest_path = Path(manifest_path)
+        if not manifest_path.is_absolute():
+            manifest_path = root / manifest_path
+        manifest_path = manifest_path.resolve()
         with manifest_path.open(encoding="utf-8") as manifest_file:
             manifest = yaml.safe_load(manifest_file)
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("dashboards"), list):
+            raise ValueError("invalid manifest structure")
         entries = []
         for manifest_entry in manifest["dashboards"]:
+            if not isinstance(manifest_entry, dict):
+                raise ValueError("invalid dashboard entry")
             entry = dict(manifest_entry)
-            config_path = root / entry["config"]
+            string_fields = ("url_path", "title", "icon", "mode", "config")
+            if any(
+                type(entry.get(field)) is not str or not entry[field].strip()
+                for field in string_fields
+            ):
+                raise ValueError("invalid dashboard string field")
+            if entry["mode"] != "storage":
+                raise ValueError("dashboard mode must be storage")
+            for field in ("show_in_sidebar", "require_admin"):
+                if type(entry.get(field)) is not bool:
+                    raise ValueError("invalid dashboard boolean field")
+            config_path = (root / entry["config"]).resolve()
+            config_path.relative_to(root)
             with config_path.open(encoding="utf-8") as config_file:
                 entry["config_data"] = yaml.safe_load(config_file)
+            if not isinstance(entry["config_data"], dict):
+                raise ValueError("dashboard config must be a mapping")
             entries.append(entry)
         return entries
-    except (OSError, KeyError, TypeError, yaml.YAMLError) as exc:
-        raise DeploymentError("Unable to load dashboard manifest or config YAML") from exc
+    except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError):
+        raise DeploymentError("Unable to load dashboard manifest or config YAML") from None
 
 
 def collect_entity_ids(value):
@@ -106,6 +125,7 @@ class HomeAssistantWebSocket:
         self.timeout = timeout
         self.connection = None
         self.next_id = 1
+        self.warnings = []
 
     def _receive(self):
         try:
@@ -129,8 +149,8 @@ class HomeAssistantWebSocket:
         except Exception as exc:
             try:
                 self.close()
-            except DeploymentError:
-                pass
+            except DeploymentError as close_error:
+                self.warnings.append(str(close_error))
             if isinstance(exc, DeploymentError):
                 raise
             raise DeploymentError(
@@ -149,9 +169,8 @@ class HomeAssistantWebSocket:
     def __exit__(self, exc_type, _exc_value, _traceback):
         try:
             self.close()
-        except DeploymentError:
-            if exc_type is None:
-                raise
+        except DeploymentError as close_error:
+            self.warnings.append(str(close_error))
         return False
 
     def command(self, payload):
@@ -182,6 +201,11 @@ class HomeAssistantWebSocket:
         return response.get("result")
 
 
+class _NoRedirectHandler(urllib_request.HTTPRedirectHandler):
+    def redirect_request(self, _request, _file_pointer, _code, _message, _headers, _new_url):
+        return None
+
+
 def http_resource_status(base_url, token, path):
     """Return whether an authenticated frontend resource is available."""
     url = base_url.rstrip("/") + path
@@ -190,11 +214,12 @@ def http_resource_status(base_url, token, path):
         headers={"Authorization": f"Bearer {token}"},
         method="GET",
     )
+    opener = urllib_request.build_opener(_NoRedirectHandler())
     try:
-        with urllib_request.urlopen(request, timeout=10) as response:
-            return 200 <= response.status < 400
-    except urllib_error.HTTPError as exc:
-        return 300 <= exc.code < 400
+        with opener.open(request, timeout=10) as response:
+            return 200 <= response.status < 300
+    except urllib_error.HTTPError:
+        return False
     except (urllib_error.URLError, OSError):
         raise DeploymentError(
             _redact(f"Unable to verify frontend resource {path}", token)
@@ -203,13 +228,37 @@ def http_resource_status(base_url, token, path):
 
 def preflight(client, base_url, token, entries, resource_checker=http_resource_status):
     """Validate collision, entity, and resource prerequisites without mutation."""
-    original_dashboards = client.command({"type": "lovelace/dashboards/list"})
     target_paths = [entry["url_path"] for entry in entries]
+    duplicate_paths = sorted(
+        {target_path for target_path in target_paths if target_paths.count(target_path) > 1}
+    )
+    if duplicate_paths:
+        raise DeploymentError(
+            "Duplicate target dashboard URL path: " + ", ".join(duplicate_paths)
+        )
+
+    original_dashboards = client.command({"type": "lovelace/dashboards/list"})
     existing_paths = {dashboard.get("url_path") for dashboard in original_dashboards}
     collisions = sorted(set(target_paths).intersection(existing_paths))
     if collisions:
         raise DeploymentError(
             "Target dashboard URL path already exists: " + ", ".join(collisions)
+        )
+
+    panels = client.command({"type": "get_panels"})
+    if not isinstance(panels, dict):
+        raise DeploymentError("Home Assistant returned an invalid panel registry")
+    panel_paths = {str(panel_key).lstrip("/") for panel_key in panels}
+    panel_paths.update(
+        str(panel["url_path"]).lstrip("/")
+        for panel in panels.values()
+        if isinstance(panel, dict) and isinstance(panel.get("url_path"), str)
+    )
+    panel_collisions = sorted(set(target_paths).intersection(panel_paths))
+    if panel_collisions:
+        raise DeploymentError(
+            "Target dashboard URL path collides with panel: "
+            + ", ".join(panel_collisions)
         )
 
     states = client.command({"type": "get_states"})
@@ -247,8 +296,8 @@ def write_json(path, value):
             json.dumps(value, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-    except (OSError, TypeError, ValueError) as exc:
-        raise DeploymentError(f"Unable to write deployment artifact {path.name}") from exc
+    except (OSError, TypeError, ValueError):
+        raise DeploymentError(f"Unable to write deployment artifact {path.name}") from None
 
 
 def deploy(client, entries, preflight_report, artifact_dir):
@@ -266,20 +315,28 @@ def deploy(client, entries, preflight_report, artifact_dir):
         for entry in entries:
             url_path = entry["url_path"]
             operation = f"create dashboard {url_path}"
+            expected_dashboard = {
+                "url_path": url_path,
+                "title": entry["title"],
+                "icon": entry["icon"],
+                "mode": entry["mode"],
+                "show_in_sidebar": entry["show_in_sidebar"],
+                "require_admin": entry["require_admin"],
+            }
             dashboard = client.command(
                 {
                     "type": "lovelace/dashboards/create",
-                    "url_path": url_path,
-                    "title": entry["title"],
-                    "icon": entry["icon"],
-                    "mode": entry["mode"],
-                    "show_in_sidebar": entry["show_in_sidebar"],
-                    "require_admin": entry["require_admin"],
+                    **expected_dashboard,
                 }
             )
             if not isinstance(dashboard, dict) or not dashboard.get("id"):
                 raise DeploymentError("Dashboard creation returned no dashboard ID")
             created.append(dashboard)
+            if any(
+                dashboard.get(field) != expected_value
+                for field, expected_value in expected_dashboard.items()
+            ):
+                raise DeploymentError(f"Created dashboard metadata differs for {url_path}")
 
             operation = f"save dashboard config {url_path}"
             client.command(
@@ -308,6 +365,13 @@ def deploy(client, entries, preflight_report, artifact_dir):
                 raise DeploymentError(
                     f"Pre-existing dashboard changed: {original.get('id', 'unknown')}"
                 )
+        for created_dashboard in created:
+            dashboard_id = created_dashboard["id"]
+            if final_by_id.get(dashboard_id) != created_dashboard:
+                raise DeploymentError(
+                    "Created dashboard missing or changed: "
+                    + f"{dashboard_id} ({created_dashboard.get('url_path', 'unknown')})"
+                )
         result = {
             "status": "deployed",
             "created": created,
@@ -315,11 +379,55 @@ def deploy(client, entries, preflight_report, artifact_dir):
         }
         write_json(artifact_dir / "deployment-result.json", result)
         return result
-    except Exception:
+    except Exception as exc:
         error_message = f"Deployment failed during {operation}"
+        if isinstance(exc, DeploymentError):
+            error_message += f": {exc}"
+        else:
+            error_message += ": unexpected internal error"
         deleted_dashboard_ids = []
         rollback_errors = []
+        original_ids = {
+            dashboard.get("id") for dashboard in original_dashboards if dashboard.get("id")
+        }
+        target_paths = [entry["url_path"] for entry in entries]
+        rollback_candidates = {}
+        for dashboard in created:
+            dashboard_id = dashboard.get("id")
+            if dashboard_id and dashboard_id not in original_ids:
+                rollback_candidates[dashboard_id] = dashboard
+        try:
+            reconciled_dashboards = client.command({"type": "lovelace/dashboards/list"})
+            for dashboard in reconciled_dashboards:
+                dashboard_id = dashboard.get("id")
+                if dashboard.get("url_path") not in target_paths or dashboard_id in original_ids:
+                    continue
+                if not dashboard_id:
+                    rollback_errors.append(
+                        "Cannot delete reconciled dashboard without ID at path "
+                        + str(dashboard.get("url_path"))
+                    )
+                    continue
+                rollback_candidates[dashboard_id] = dashboard
+        except Exception:
+            rollback_errors.append("Failed to reconcile dashboard registry during rollback")
+
+        ordered_candidates = []
+        ordered_candidate_ids = set()
+        candidate_values = list(rollback_candidates.values())
+        for target_path in reversed(target_paths):
+            for dashboard in reversed(candidate_values):
+                if dashboard.get("url_path") == target_path:
+                    ordered_candidates.append(dashboard)
+                    ordered_candidate_ids.add(dashboard["id"])
         for dashboard in reversed(created):
+            if (
+                dashboard.get("id") in rollback_candidates
+                and dashboard["id"] not in ordered_candidate_ids
+            ):
+                ordered_candidates.append(rollback_candidates[dashboard["id"]])
+                ordered_candidate_ids.add(dashboard["id"])
+        for dashboard in ordered_candidates:
             dashboard_id = dashboard["id"]
             try:
                 client.command(
@@ -378,6 +486,7 @@ def main(argv=None):
             else:
                 result = dict(report)
                 result["status"] = "dry-run"
+        result["warnings"] = list(getattr(client, "warnings", []))
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     except DeploymentError as exc:

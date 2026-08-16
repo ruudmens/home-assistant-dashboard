@@ -5,9 +5,11 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest import mock
 from urllib import error as urllib_error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from tools import deploy_dashboards
 
@@ -28,6 +30,14 @@ class FakeClient:
         missing_entity=None,
         fail_save=None,
         fail_delete=None,
+        panels=None,
+        fail_create_after_append=None,
+        unexpected_save=None,
+        config_mismatch=None,
+        missing_created_on_final=None,
+        changed_created_on_final=None,
+        fail_reconcile=False,
+        wrong_created_path=None,
     ):
         self.entries = entries
         self.original = {
@@ -56,31 +66,69 @@ class FakeClient:
         self.states = [{"entity_id": entity_id} for entity_id in sorted(entities)]
         self.fail_save = fail_save
         self.fail_delete = fail_delete
+        self.panels = panels or {}
+        self.fail_create_after_append = fail_create_after_append
+        self.unexpected_save = unexpected_save
+        self.config_mismatch = config_mismatch
+        self.missing_created_on_final = missing_created_on_final
+        self.changed_created_on_final = changed_created_on_final
+        self.fail_reconcile = fail_reconcile
+        self.wrong_created_path = wrong_created_path
         self.commands = []
         self.configs = {}
         self.deleted = []
+        self.list_calls = 0
+        self.create_failed = False
+        self.warnings = []
 
     def command(self, payload):
         self.commands.append(dict(payload))
         command_type = payload["type"]
         if command_type == "lovelace/dashboards/list":
-            return [dict(dashboard) for dashboard in self.dashboards]
+            self.list_calls += 1
+            if self.fail_reconcile and self.create_failed:
+                raise deploy_dashboards.DeploymentError("dashboard reconciliation unavailable")
+            dashboards = [dict(dashboard) for dashboard in self.dashboards]
+            if self.list_calls == 2 and self.missing_created_on_final:
+                dashboards = [
+                    dashboard
+                    for dashboard in dashboards
+                    if dashboard.get("url_path") != self.missing_created_on_final
+                ]
+            if self.list_calls == 2 and self.changed_created_on_final:
+                for dashboard in dashboards:
+                    if dashboard.get("url_path") == self.changed_created_on_final:
+                        dashboard["title"] = "Changed behind our back"
+            return dashboards
+        if command_type == "get_panels":
+            return {key: dict(value) for key, value in self.panels.items()}
         if command_type == "get_states":
             return list(self.states)
         if command_type == "lovelace/dashboards/create":
             dashboard = dict(payload)
             dashboard.pop("type")
             dashboard["id"] = f'{payload["url_path"]}-id'
+            if payload["url_path"] == self.wrong_created_path:
+                dashboard["url_path"] = "wrong-returned-path"
             self.dashboards.append(dashboard)
+            if payload["url_path"] == self.fail_create_after_append:
+                self.create_failed = True
+                raise deploy_dashboards.DeploymentError(
+                    f'create response lost for {payload["url_path"]}'
+                )
             return dict(dashboard)
         if command_type == "lovelace/config/save":
+            if payload["url_path"] == self.unexpected_save:
+                raise RuntimeError(f"unexpected save failure with {TOKEN}")
             if payload["url_path"] == self.fail_save:
                 raise deploy_dashboards.DeploymentError(
-                    f"save failed for {payload['url_path']} with {TOKEN}"
+                    f"save failed for {payload['url_path']}: invalid_format: safe reason"
                 )
             self.configs[payload["url_path"]] = payload["config"]
             return None
         if command_type == "lovelace/config":
+            if payload["url_path"] == self.config_mismatch:
+                return {"changed": True}
             return self.configs[payload["url_path"]]
         if command_type == "lovelace/dashboards/delete":
             dashboard_id = payload["dashboard_id"]
@@ -129,6 +177,66 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertTrue(all(isinstance(entry["config_data"], dict) for entry in self.entries))
         self.assertEqual(self.entries[0]["config_data"]["title"], "Luxury Home")
+
+    def test_load_entries_rejects_config_path_outside_root_without_leaking_contents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            parent = Path(temp_dir)
+            root = parent / "root"
+            root.mkdir()
+            outside = parent / "outside.yaml"
+            outside.write_text(f"secret: {TOKEN}\n", encoding="utf-8")
+            manifest = root / "manifest.yaml"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "dashboards": [
+                            {
+                                "url_path": "safe",
+                                "title": "Safe",
+                                "icon": "mdi:home",
+                                "mode": "storage",
+                                "show_in_sidebar": True,
+                                "require_admin": False,
+                                "config": "../outside.yaml",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                deploy_dashboards.load_entries(root, manifest)
+        self.assertNotIn(TOKEN, str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+
+    def test_load_entries_rejects_malformed_manifest_shapes_and_types(self):
+        valid_entry = {
+            "url_path": "safe",
+            "title": "Safe",
+            "icon": "mdi:home",
+            "mode": "storage",
+            "show_in_sidebar": True,
+            "require_admin": False,
+            "config": "dashboard.yaml",
+        }
+        malformed = [
+            [],
+            {"dashboards": {}},
+            {"dashboards": [dict(valid_entry, url_path=7)]},
+            {"dashboards": [dict(valid_entry, show_in_sidebar="true")]},
+            {"dashboards": [dict(valid_entry, mode="yaml")]},
+            {"dashboards": [{key: value for key, value in valid_entry.items() if key != "icon"}]},
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dashboard.yaml").write_text("title: Safe\n", encoding="utf-8")
+            manifest = root / "manifest.yaml"
+            for value in malformed:
+                with self.subTest(value=value):
+                    manifest.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                        deploy_dashboards.load_entries(root, manifest)
+                    self.assertNotIn(TOKEN, str(raised.exception))
 
     def test_make_ws_url_converts_http_schemes(self):
         self.assertEqual(
@@ -180,6 +288,42 @@ class DeploymentTests(unittest.TestCase):
             [command["type"] for command in client.commands],
             ["lovelace/dashboards/list"],
         )
+
+    def test_preflight_rejects_duplicate_manifest_paths_before_any_command(self):
+        entries = [dict(entry) for entry in self.entries]
+        entries[2]["url_path"] = entries[1]["url_path"]
+        client = FakeClient(entries)
+        with self.assertRaisesRegex(
+            deploy_dashboards.DeploymentError, "(?i)duplicate.*luxury-garage"
+        ):
+            deploy_dashboards.preflight(
+                client, "https://ha.example.test", TOKEN, entries, lambda *_: True
+            )
+        self.assertEqual(client.commands, [])
+
+    def test_preflight_rejects_second_and_third_target_panel_routes(self):
+        panel_cases = [
+            {"garage-route": {"url_path": "luxury-garage"}},
+            {"luxury-remote": {"title": "Remote panel"}},
+        ]
+        for panels in panel_cases:
+            with self.subTest(panels=panels):
+                client = FakeClient(self.entries, panels=panels)
+                with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                    deploy_dashboards.preflight(
+                        client,
+                        "https://ha.example.test",
+                        TOKEN,
+                        self.entries,
+                        lambda *_: True,
+                    )
+                self.assertTrue(
+                    any(path in str(raised.exception) for path in ("luxury-garage", "luxury-remote"))
+                )
+                self.assertEqual(
+                    [command["type"] for command in client.commands],
+                    ["lovelace/dashboards/list", "get_panels"],
+                )
 
     def test_preflight_reports_sorted_missing_live_entities(self):
         client = FakeClient(self.entries, missing_entity="light.garage_2")
@@ -250,6 +394,7 @@ class DeploymentTests(unittest.TestCase):
                 failure["deleted_dashboard_ids"],
                 ["luxury-garage-id", "luxury-home-id"],
             )
+            self.assertIn("invalid_format: safe reason", failure["error"])
             self.assertNotIn(TOKEN, json.dumps(failure))
 
     def test_rollback_failure_is_reported_and_does_not_expose_secrets(self):
@@ -275,27 +420,190 @@ class DeploymentTests(unittest.TestCase):
             self.assertIsNone(raised.exception.__cause__)
             self.assertNotIn(TOKEN, failure_text)
 
+    def test_create_response_loss_reconciles_and_deletes_server_side_dashboard(self):
+        client = FakeClient(self.entries, fail_create_after_append="luxury-garage")
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                deploy_dashboards.DeploymentError, "create response lost for luxury-garage"
+            ):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(client.deleted, ["luxury-garage-id", "luxury-home-id"])
+        self.assertEqual(client.dashboards, [client.original])
+        self.assertEqual(failure["status"], "rolled_back")
+
+    def test_failed_rollback_reconciliation_is_recorded_incomplete(self):
+        client = FakeClient(
+            self.entries,
+            fail_create_after_append="luxury-home",
+            fail_reconcile=True,
+        )
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(deploy_dashboards.DeploymentError):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(failure["status"], "rollback_incomplete")
+        self.assertTrue(
+            any("reconcile" in message for message in failure["rollback_errors"])
+        )
+        self.assertEqual(client.deleted, [])
+        self.assertEqual(client.dashboards[0], client.original)
+
+    def test_unexpected_failure_detail_is_not_copied_to_error_or_artifact(self):
+        client = FakeClient(self.entries, unexpected_save="luxury-home")
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure_text = (Path(temp_dir) / "deployment-failure.json").read_text(
+                encoding="utf-8"
+            )
+        self.assertIn("unexpected internal error", str(raised.exception).lower())
+        self.assertNotIn(TOKEN, str(raised.exception))
+        self.assertNotIn(TOKEN, failure_text)
+
+    def test_saved_config_mismatch_detail_is_preserved_safely(self):
+        client = FakeClient(self.entries, config_mismatch="luxury-home")
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                deploy_dashboards.DeploymentError,
+                "Saved dashboard config differs for luxury-home",
+            ):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertIn("Saved dashboard config differs for luxury-home", failure["error"])
+        self.assertEqual(client.deleted, ["luxury-home-id"])
+
+    def test_missing_or_changed_created_final_record_triggers_full_rollback(self):
+        cases = [
+            {"missing_created_on_final": "luxury-garage"},
+            {"changed_created_on_final": "luxury-remote"},
+        ]
+        for options in cases:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as temp_dir:
+                client = FakeClient(self.entries, **options)
+                report = deploy_dashboards.preflight(
+                    client,
+                    "https://ha.example.test",
+                    TOKEN,
+                    self.entries,
+                    lambda *_: True,
+                )
+                with self.assertRaisesRegex(
+                    deploy_dashboards.DeploymentError, "Created dashboard"
+                ):
+                    deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+                self.assertEqual(
+                    client.deleted,
+                    ["luxury-remote-id", "luxury-garage-id", "luxury-home-id"],
+                )
+                self.assertEqual(client.dashboards, [client.original])
+
+    def test_wrong_created_response_path_is_rejected_and_rolled_back_by_id(self):
+        client = FakeClient(self.entries, wrong_created_path="luxury-home")
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                deploy_dashboards.DeploymentError,
+                "Created dashboard metadata differs for luxury-home",
+            ):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+        self.assertEqual(client.deleted, ["luxury-home-id"])
+        self.assertEqual(client.dashboards, [client.original])
+
 
 class HttpResourceTests(unittest.TestCase):
-    def test_http_resource_status_accepts_three_hundred_responses(self):
+    def test_http_resource_status_rejects_three_hundred_responses(self):
         response = urllib_error.HTTPError(
             "https://ha.example.test/resource.js", 304, "Not Modified", {}, None
         )
+        opener = mock.MagicMock()
+        opener.open.side_effect = response
         with mock.patch.object(
-            deploy_dashboards.urllib_request, "urlopen", side_effect=response
+            deploy_dashboards.urllib_request, "build_opener", return_value=opener
         ):
-            self.assertTrue(
+            self.assertFalse(
                 deploy_dashboards.http_resource_status(
                     "https://ha.example.test", TOKEN, "/resource.js"
                 )
             )
 
+    def test_http_resource_redirect_never_forwards_authorization(self):
+        initial_authorization = []
+        target_authorization = []
+
+        class TargetHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                target_authorization.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, _format, *args):
+                pass
+
+        target_server = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+        target_thread = threading.Thread(target=target_server.serve_forever, daemon=True)
+        target_thread.start()
+        target_url = f"http://127.0.0.1:{target_server.server_port}/target"
+
+        class RedirectHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                initial_authorization.append(self.headers.get("Authorization"))
+                self.send_response(302)
+                self.send_header("Location", target_url)
+                self.end_headers()
+
+            def log_message(self, _format, *args):
+                pass
+
+        redirect_server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+        redirect_thread = threading.Thread(target=redirect_server.serve_forever, daemon=True)
+        redirect_thread.start()
+        try:
+            available = deploy_dashboards.http_resource_status(
+                f"http://127.0.0.1:{redirect_server.server_port}",
+                TOKEN,
+                "/resource.js",
+            )
+        finally:
+            redirect_server.shutdown()
+            redirect_server.server_close()
+            redirect_thread.join(timeout=2)
+            target_server.shutdown()
+            target_server.server_close()
+            target_thread.join(timeout=2)
+
+        self.assertFalse(available)
+        self.assertEqual(initial_authorization, [f"Bearer {TOKEN}"])
+        self.assertEqual(target_authorization, [])
+
     def test_http_resource_status_rejects_http_error(self):
         response = urllib_error.HTTPError(
             "https://ha.example.test/resource.js", 404, "Not Found", {}, None
         )
+        opener = mock.MagicMock()
+        opener.open.side_effect = response
         with mock.patch.object(
-            deploy_dashboards.urllib_request, "urlopen", side_effect=response
+            deploy_dashboards.urllib_request, "build_opener", return_value=opener
         ):
             self.assertFalse(
                 deploy_dashboards.http_resource_status(
@@ -304,10 +612,12 @@ class HttpResourceTests(unittest.TestCase):
             )
 
     def test_http_resource_network_error_does_not_expose_token(self):
+        opener = mock.MagicMock()
+        opener.open.side_effect = urllib_error.URLError(f"network rejected {TOKEN}")
         with mock.patch.object(
             deploy_dashboards.urllib_request,
-            "urlopen",
-            side_effect=urllib_error.URLError(f"network rejected {TOKEN}"),
+            "build_opener",
+            return_value=opener,
         ):
             with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
                 deploy_dashboards.http_resource_status(
@@ -408,16 +718,12 @@ class WebSocketTests(unittest.TestCase):
         with mock.patch.object(
             deploy_dashboards.websocket, "create_connection", return_value=connection
         ):
-            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
-                with deploy_dashboards.HomeAssistantWebSocket(
-                    "https://ha.example.test", TOKEN
-                ):
-                    pass
-        self.assertEqual(
-            str(raised.exception), "Failed to close Home Assistant WebSocket"
-        )
-        self.assertNotIn(TOKEN, str(raised.exception))
-        self.assertIsNone(raised.exception.__cause__)
+            with deploy_dashboards.HomeAssistantWebSocket(
+                "https://ha.example.test", TOKEN
+            ) as client:
+                pass
+        self.assertEqual(client.warnings, ["Failed to close Home Assistant WebSocket"])
+        self.assertNotIn(TOKEN, json.dumps(client.warnings))
 
     def test_failed_command_names_command_and_error_without_token(self):
         connection = FakeConnection(
@@ -503,7 +809,54 @@ class CliTests(unittest.TestCase):
             )
         self.assertEqual(result, 0)
         self.assertEqual(preflight["status"], "ready")
-        self.assertEqual(json.loads(stdout.getvalue())["status"], "dry-run")
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(output["status"], "dry-run")
+        self.assertEqual(output["warnings"], [])
+
+    def test_main_apply_success_survives_close_error_and_prints_safe_warning(self):
+        client = FakeClient(deploy_dashboards.load_entries(ROOT, MANIFEST))
+        real_preflight = deploy_dashboards.preflight
+
+        class CloseWarningContext:
+            def __enter__(self):
+                return client
+
+            def __exit__(self, _exc_type, _exc_value, _traceback):
+                client.warnings.append("Failed to close Home Assistant WebSocket")
+                return False
+
+        with tempfile.TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {"HA_URL": "https://ha.example.test", "HA_TOKEN": TOKEN},
+            clear=True,
+        ), mock.patch.object(
+            deploy_dashboards, "HomeAssistantWebSocket", return_value=CloseWarningContext()
+        ), mock.patch.object(
+            deploy_dashboards,
+            "preflight",
+            side_effect=lambda fake_client, base_url, token, entries: real_preflight(
+                fake_client, base_url, token, entries, lambda *_: True
+            ),
+        ), mock.patch(
+            "sys.stdout", new=io.StringIO()
+        ) as stdout, mock.patch(
+            "sys.stderr", new=io.StringIO()
+        ) as stderr:
+            return_code = deploy_dashboards.main(
+                [
+                    "--manifest",
+                    str(MANIFEST),
+                    "--artifact-dir",
+                    temp_dir,
+                    "--apply",
+                ]
+            )
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(return_code, 0)
+        self.assertEqual(output["status"], "deployed")
+        self.assertEqual(output["warnings"], ["Failed to close Home Assistant WebSocket"])
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertNotIn(TOKEN, json.dumps(output))
 
 
 if __name__ == "__main__":
