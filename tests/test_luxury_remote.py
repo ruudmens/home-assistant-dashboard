@@ -71,6 +71,119 @@ LOCK_COLORS = {
 }
 
 
+def card_inventory(config: dict) -> list[tuple[str, str | None, str | None, str | None, str | None]]:
+    """Return the exact presentation fields for every recursive Lovelace card."""
+    return [
+        (path, card.get("type"), card.get("entity"), card.get("name"), card.get("heading"))
+        for path, card in config_assertions.iter_lovelace_cards(config)
+    ]
+
+
+def action_record(
+    path: str,
+    channel: str,
+    action: str,
+    *,
+    perform_action: str | None = None,
+    service: str | None = None,
+    entity_id: str | None = None,
+    device_id: str | None = None,
+    area_id: str | None = None,
+    navigation_path: str | None = None,
+    confirmation: bool = False,
+) -> dict:
+    """Build a complete expected explicit-action record."""
+    return {
+        "path": path,
+        "channel": channel,
+        "action": action,
+        "perform_action": perform_action,
+        "service": service,
+        "target_entity_id": entity_id,
+        "target_device_id": device_id,
+        "target_area_id": area_id,
+        "navigation_path": navigation_path,
+        "has_confirmation": confirmation,
+    }
+
+
+EXACT_CARD_INVENTORY = [
+    ("views[0].sections[0].cards[0]", "heading", None, None, "Security"),
+    ("views[0].sections[0].cards[1]", "custom:button-card", "alarm_control_panel.alarmo", "Alarmo", None),
+    ("views[0].sections[0].cards[2]", "custom:button-card", "lock.virtual_front_door_lock", "Front door", None),
+    ("views[0].sections[0].cards[3]", "custom:button-card", "lock.back_door", "Back door", None),
+    ("views[0].sections[1].cards[0]", "heading", None, None, "Quick lights"),
+    ("views[0].sections[1].cards[1]", "tile", "light.main_light", "Main", None),
+    ("views[0].sections[1].cards[2]", "tile", "light.kitchen_light", "Kitchen", None),
+    ("views[0].sections[1].cards[3]", "tile", "light.bedroom_light", "Bedroom", None),
+    ("views[0].sections[1].cards[4]", "tile", "light.garage_2", "Garage", None),
+    ("views[0].sections[1].cards[5]", "button", "scene.all_lights", "All Lights", None),
+    ("views[0].sections[2].cards[0]", "heading", None, None, "Comfort"),
+    ("views[0].sections[2].cards[1]", "thermostat", "climate.my_ecobee", "Ecobee", None),
+    ("views[0].sections[2].cards[2]", "weather-forecast", "weather.home", None, None),
+    ("views[0].sections[3].cards[0]", "heading", None, None, "Media"),
+    ("views[0].sections[3].cards[1]", "media-control", "media_player.living_room", None, None),
+    ("views[0].sections[3].cards[2]", "custom:stack-in-card", None, None, None),
+    ("views[0].sections[3].cards[2].cards[0]", "tile", "script.radio_play", "GKR Radio", None),
+    ("views[0].sections[3].cards[2].cards[1]", "tile", "input_number.radio_volume", "Radio volume", None),
+    ("views[0].sections[4].cards[0]", "heading", None, None, "People & presence"),
+    ("views[0].sections[4].cards[1]", "tile", "person.kcam", "Kcam", None),
+    ("views[0].sections[4].cards[2]", "tile", "person.mom", "Mom", None),
+    ("views[0].sections[4].cards[3]", "tile", "binary_sensor.livingroom_matter_pir_occupancy", "Living Room occupancy", None),
+    ("views[0].sections[4].cards[4]", "tile", "binary_sensor.zachary_s_s21_ultra_presence", "Zachary presence", None),
+    ("views[0].sections[5].cards[0]", "heading", None, None, "Cameras"),
+    ("views[0].sections[5].cards[1]", "picture-entity", "camera.livingroom_2", "Living Room", None),
+    ("views[0].sections[5].cards[2]", "picture-entity", "camera.backyard_backyard_motion_snapshot", "Backyard snapshot", None),
+    ("views[0].sections[5].cards[3]", "picture-entity", "camera.blink_backyard", "Blink Backyard", None),
+    ("views[0].sections[5].cards[4]", "picture-entity", "camera.bedroom_bedroom_motion_snapshot", "Bedroom snapshot", None),
+    ("views[0].sections[6].cards[0]", "heading", None, None, "Dashboards"),
+    ("views[0].sections[6].cards[1]", "custom:button-card", None, "Home", None),
+    ("views[0].sections[6].cards[2]", "custom:button-card", None, "Garage", None),
+]
+
+EXACT_ACTION_RECORDS = [
+    action_record(
+        "views[0].sections[0].cards[1]", "tap_action", "more-info", confirmation=True
+    ),
+    action_record(
+        "views[0].sections[0].cards[2]", "tap_action", "toggle", confirmation=True
+    ),
+    action_record(
+        "views[0].sections[0].cards[3]", "tap_action", "toggle", confirmation=True
+    ),
+    action_record(
+        "views[0].sections[1].cards[5]",
+        "tap_action",
+        "perform-action",
+        perform_action="scene.turn_on",
+        entity_id="scene.all_lights",
+    ),
+    action_record(
+        "views[0].sections[3].cards[2].cards[0]",
+        "tap_action",
+        "perform-action",
+        perform_action="script.turn_on",
+        entity_id="script.radio_play",
+    ),
+    action_record("views[0].sections[5].cards[1]", "tap_action", "more-info"),
+    action_record("views[0].sections[5].cards[2]", "tap_action", "more-info"),
+    action_record("views[0].sections[5].cards[3]", "tap_action", "more-info"),
+    action_record("views[0].sections[5].cards[4]", "tap_action", "more-info"),
+    action_record(
+        "views[0].sections[6].cards[1]",
+        "tap_action",
+        "navigate",
+        navigation_path="/luxury-home",
+    ),
+    action_record(
+        "views[0].sections[6].cards[2]",
+        "tap_action",
+        "navigate",
+        navigation_path="/luxury-garage",
+    ),
+]
+
+
 class LuxuryRemoteTests(unittest.TestCase):
     def test_dashboard_file_must_exist_before_loading_configuration(self):
         missing_path = "dashboards/does_not_exist.yaml"
@@ -185,6 +298,13 @@ class LuxuryRemoteTests(unittest.TestCase):
             config_assertions.security_action_violations(unsafe_lock),
         )
 
+        unconfirmed_more_info = deepcopy(cards_for_entity(self.config, "lock.back_door")[0])
+        unconfirmed_more_info["hold_action"] = {"action": "more-info"}
+        self.assertIn(
+            "hold_action action 'more-info' requires confirmation",
+            config_assertions.security_action_violations(unconfirmed_more_info),
+        )
+
     def test_quick_lights_are_sole_amber_cards_and_scene_targets_itself(self):
         expected_lights = {
             "light.main_light": "Main",
@@ -241,6 +361,35 @@ class LuxuryRemoteTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all("column_span" not in section for section in sections))
+
+    def test_recursive_card_inventory_is_exact_and_rejects_nested_markdown(self):
+        self.assertEqual(card_inventory(self.config), EXACT_CARD_INVENTORY)
+
+        nested_markdown = deepcopy(self.config)
+        nested_markdown["views"][0]["sections"][3]["cards"][2]["cards"].append(
+            {"type": "markdown", "content": "Unrelated nested card"}
+        )
+        self.assertNotEqual(card_inventory(nested_markdown), EXACT_CARD_INVENTORY)
+
+    def test_explicit_action_records_are_exact_and_reject_nested_device_target(self):
+        self.assertEqual(config_assertions.explicit_action_records(self.config), EXACT_ACTION_RECORDS)
+
+        nested_device_target = deepcopy(self.config)
+        nested_device_target["views"][0]["sections"][3]["cards"][2]["cards"].append(
+            {
+                "type": "button",
+                "entity": "script.radio_play",
+                "tap_action": {
+                    "action": "perform-action",
+                    "perform_action": "script.turn_on",
+                    "target": {"device_id": "living-room-device"},
+                },
+            }
+        )
+        self.assertEqual(config_assertions.action_contract_violations(nested_device_target), [])
+        self.assertNotEqual(
+            config_assertions.explicit_action_records(nested_device_target), EXACT_ACTION_RECORDS
+        )
 
     def test_comfort_uses_ecobee_thermostat_and_compact_daily_weather(self):
         thermostat = cards_for_entity(self.config, "climate.my_ecobee")[0]
@@ -358,14 +507,29 @@ class LuxuryRemoteTests(unittest.TestCase):
             config_assertions.action_contract_violations(unsupported_action_mutant),
         )
 
-    def test_config_has_no_credentials_and_rejects_access_token_mutant(self):
+    def test_config_has_no_credentials_and_rejects_normalized_credential_mutants(self):
         self.assertEqual(config_assertions.credential_hygiene_violations(self.config), [])
 
-        credential_mutant = deepcopy(self.config)
-        credential_mutant["access_token"] = "private-value"
+        expected_key_markers = {
+            "access_token": "access_token",
+            "api_token": "api_token",
+            "private-key": "private_key",
+            "credentials": "credentials",
+            "webhookSecret": "webhook_secret",
+        }
+        for key, marker in expected_key_markers.items():
+            credential_mutant = deepcopy(self.config)
+            credential_mutant[key] = "private-value"
+            self.assertIn(
+                f"credential marker '{marker}' found in key '{key}'",
+                config_assertions.credential_hygiene_violations(credential_mutant),
+            )
+
+        content_mutant = deepcopy(self.config)
+        content_mutant["note"] = "PRIVATE KEY"
         self.assertIn(
-            "credential marker 'access_token' found in key 'access_token'",
-            config_assertions.credential_hygiene_violations(credential_mutant),
+            "credential marker 'private_key' found in string 'PRIVATE KEY'",
+            config_assertions.credential_hygiene_violations(content_mutant),
         )
 
 

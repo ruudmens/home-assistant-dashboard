@@ -12,12 +12,18 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 ALLOWED_REMOTE_SERVICE_ACTIONS = {"scene.turn_on", "script.turn_on"}
 ALLOWED_REMOTE_ACTIONS = {"more-info", "toggle", "perform-action", "navigate"}
 CREDENTIAL_MARKERS = (
+    "webhook_secret",
     "access_token",
+    "api_token",
+    "private_key",
+    "credentials",
+    "credential",
     "authorization",
     "bearer",
     "password",
     "secret",
     "api_key",
+    "token",
 )
 
 
@@ -64,6 +70,57 @@ def walk(value: Any) -> Iterator[dict | list]:
         yield value
         for child in value:
             yield from walk(child)
+
+
+def iter_lovelace_cards(config: dict) -> Iterator[tuple[str, dict]]:
+    """Yield every section card and nested card with its stable Lovelace path."""
+    for view_index, view in enumerate(config.get("views", [])):
+        if not isinstance(view, dict):
+            continue
+        for section_index, section in enumerate(view.get("sections", [])):
+            if not isinstance(section, dict):
+                continue
+            for card_index, card in enumerate(section.get("cards", [])):
+                if isinstance(card, dict):
+                    path = f"views[{view_index}].sections[{section_index}].cards[{card_index}]"
+                    yield from _iter_card_tree(card, path)
+
+
+def _iter_card_tree(card: dict, path: str) -> Iterator[tuple[str, dict]]:
+    """Yield a card followed by the cards in its nested ``cards`` lists."""
+    yield path, card
+    nested_cards = card.get("cards", [])
+    if not isinstance(nested_cards, list):
+        return
+    for card_index, nested_card in enumerate(nested_cards):
+        if isinstance(nested_card, dict):
+            yield from _iter_card_tree(nested_card, f"{path}.cards[{card_index}]")
+
+
+def explicit_action_records(config: dict) -> list[dict]:
+    """Collect every top-level action mapping on every recursive Lovelace card."""
+    records: list[dict] = []
+    for path, card in iter_lovelace_cards(config):
+        for channel, action_config in card.items():
+            if not channel.endswith("_action") or not isinstance(action_config, dict):
+                continue
+            target = action_config.get("target")
+            target = target if isinstance(target, dict) else {}
+            records.append(
+                {
+                    "path": path,
+                    "channel": channel,
+                    "action": action_config.get("action"),
+                    "perform_action": action_config.get("perform_action"),
+                    "service": action_config.get("service"),
+                    "target_entity_id": target.get("entity_id"),
+                    "target_device_id": target.get("device_id"),
+                    "target_area_id": target.get("area_id"),
+                    "navigation_path": action_config.get("navigation_path"),
+                    "has_confirmation": "confirmation" in action_config,
+                }
+            )
+    return records
 
 
 def referenced_entities(config: dict) -> set[str]:
@@ -116,9 +173,9 @@ def security_action_violations(card: dict) -> list[str]:
             violations.append(f"{key} action {None!r} is unsupported")
             continue
         action = value.get("action")
-        if action in {"more-info", "none"}:
+        if action == "none":
             continue
-        if action in {"toggle", "perform-action"}:
+        if action in {"more-info", "toggle", "perform-action"}:
             if not value.get("confirmation"):
                 violations.append(f"{key} action {action!r} requires confirmation")
             continue
@@ -149,16 +206,25 @@ def credential_hygiene_violations(config: dict) -> list[str]:
         for key in node:
             if not isinstance(key, str):
                 continue
-            lowered_key = key.casefold()
-            for marker in CREDENTIAL_MARKERS:
-                if marker in lowered_key:
-                    violations.append(f"credential marker {marker!r} found in key {key!r}")
+            marker = _credential_marker(key)
+            if marker:
+                violations.append(f"credential marker {marker!r} found in key {key!r}")
     for scalar in _scalar_values(config):
-        lowered_scalar = scalar.casefold()
-        for marker in CREDENTIAL_MARKERS:
-            if marker in lowered_scalar:
-                violations.append(f"credential marker {marker!r} found in string {scalar!r}")
+        marker = _credential_marker(scalar)
+        if marker:
+            violations.append(f"credential marker {marker!r} found in string {scalar!r}")
     return violations
+
+
+def _credential_marker(value: str) -> str | None:
+    normalized_value = "".join(character for character in value.casefold() if character.isalnum())
+    for marker in CREDENTIAL_MARKERS:
+        normalized_marker = "".join(
+            character for character in marker.casefold() if character.isalnum()
+        )
+        if normalized_marker in normalized_value:
+            return marker
+    return None
 
 
 def _scalar_values(value: Any) -> Iterator[str]:
