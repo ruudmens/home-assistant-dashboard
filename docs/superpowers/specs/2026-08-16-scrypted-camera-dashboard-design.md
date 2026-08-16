@@ -1,7 +1,7 @@
 # Luxury Cameras Dashboard Design
 
 **Date:** 2026-08-16  
-**Status:** Approved design, awaiting written-spec review
+**Status:** Approved
 
 ## Purpose
 
