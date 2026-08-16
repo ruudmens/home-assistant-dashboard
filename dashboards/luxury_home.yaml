@@ -1,0 +1,327 @@
+title: Luxury Home
+button_card_templates:
+  luxury_nav:
+    show_state: false
+    size: 28px
+    styles:
+      card:
+        - border-radius: 18px
+        - border: 1px solid rgba(213, 183, 122, 0.24)
+        - background: linear-gradient(145deg, rgba(36, 39, 37, 0.96), rgba(18, 20, 20, 0.96))
+        - color: '#f6f3ec'
+        - padding: 16px
+      icon:
+        - color: '#d5b77a'
+      name:
+        - font-size: 13px
+        - font-weight: 600
+views:
+  - title: Home
+    path: home
+    icon: mdi:home-heart
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+    header:
+      layout: responsive
+      badges_position: bottom
+      cards:
+        - type: markdown
+          content: |
+            # Luxury Home
+
+            A calm view of the people, comfort, and energy that make home.
+          card_mod:
+            style: |
+              ha-card {
+                background: transparent;
+                border: 0;
+                color: #f6f3ec;
+              }
+    sections:
+      - type: grid
+        column_span: 2
+        card_mod:
+          style: |
+            :host {
+              background: rgba(23, 26, 25, 0.92);
+            }
+        cards:
+          - type: heading
+            heading: At a glance
+            icon: mdi:weather-partly-cloudy
+          - type: clock
+            clock_type: digital
+            clock_size: large
+            show_seconds: false
+            time_format: '12'
+            no_background: true
+          - type: weather-forecast
+            entity: weather.home
+            forecast_type: daily
+            show_forecast: true
+          - type: tile
+            entity: climate.my_ecobee
+            name: Home climate
+            tap_action:
+              action: more-info
+          - type: tile
+            entity: sensor.my_ecobee_temperature
+            name: Indoor temperature
+          - type: tile
+            entity: sensor.my_ecobee_humidity
+            name: Indoor humidity
+      - type: grid
+        column_span: 2
+        card_mod:
+          style: |
+            :host {
+              background: rgba(28, 26, 22, 0.90);
+            }
+        cards:
+          - type: heading
+            heading: Scenes
+            icon: mdi:creation
+          - type: button
+            entity: scene.good_morning
+            name: Good Morning
+            icon: mdi:weather-sunset-up
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.good_morning
+          - type: button
+            entity: scene.i_m_back
+            name: I'm Back
+            icon: mdi:home-import-outline
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.i_m_back
+          - type: button
+            entity: scene.all_lights
+            name: All Lights
+            icon: mdi:lightbulb-group
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.all_lights
+          - type: button
+            entity: scene.good_night
+            name: Good Night
+            icon: mdi:weather-night
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.good_night
+          - type: button
+            entity: scene.goodbye
+            name: Goodbye
+            icon: mdi:home-export-outline
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.goodbye
+      - type: grid
+        card_mod:
+          style: |
+            :host {
+              background: rgba(23, 26, 25, 0.90);
+            }
+        cards:
+          - type: heading
+            heading: Lighting
+            icon: mdi:lightbulb-group-outline
+          - type: tile
+            entity: light.main_light
+            name: Main
+            color: amber
+          - type: tile
+            entity: light.kitchen_light
+            name: Kitchen
+            color: amber
+          - type: tile
+            entity: light.bathroom_light
+            name: Bathroom
+            color: amber
+          - type: tile
+            entity: light.doorway_light
+            name: Doorway
+            color: amber
+          - type: tile
+            entity: light.bedroom_light
+            name: Bedroom
+            color: amber
+          - type: tile
+            entity: light.diningroom_light
+            name: Dining Room
+            color: amber
+          - type: tile
+            entity: light.den_light_den_light
+            name: Den
+            color: amber
+          - type: tile
+            entity: light.closet_light
+            name: Closet
+            color: amber
+          - type: tile
+            entity: light.garage_2
+            name: Garage
+            color: amber
+      - type: grid
+        card_mod:
+          style: |
+            :host {
+              background: rgba(28, 26, 22, 0.90);
+            }
+        cards:
+          - type: heading
+            heading: Energy
+            icon: mdi:solar-power
+          - type: sensor
+            entity: sensor.envoy_202308085399_current_power_consumption
+            name: Consuming now
+            graph: line
+            detail: 2
+          - type: sensor
+            entity: sensor.envoy_202308085399_current_power_production
+            name: Solar now
+            graph: line
+            detail: 2
+          - type: tile
+            entity: sensor.envoy_202308085399_current_net_power_consumption
+            name: Net power
+          - type: tile
+            entity: sensor.envoy_202308085399_energy_consumption_today
+            name: Used today
+          - type: tile
+            entity: sensor.envoy_202308085399_energy_production_today
+            name: Produced today
+          - type: history-graph
+            title: Power · last 12 hours
+            hours_to_show: 12
+            entities:
+              - entity: sensor.envoy_202308085399_current_power_consumption
+                name: Consumption
+              - entity: sensor.envoy_202308085399_current_power_production
+                name: Production
+      - type: grid
+        card_mod:
+          style: |
+            :host {
+              background: rgba(23, 26, 25, 0.90);
+            }
+        cards:
+          - type: heading
+            heading: Media
+            icon: mdi:music-circle-outline
+          - type: media-control
+            entity: media_player.living_room
+          - type: custom:stack-in-card
+            cards:
+              - type: tile
+                entity: script.radio_play
+                name: GKR Radio
+                icon: mdi:radio
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.radio_play
+              - type: tile
+                entity: input_number.radio_volume
+                name: Radio volume
+      - type: grid
+        card_mod:
+          style: |
+            :host {
+              background: rgba(28, 26, 22, 0.90);
+            }
+        cards:
+          - type: heading
+            heading: Security & presence
+            icon: mdi:shield-home-outline
+          - type: custom:button-card
+            entity: alarm_control_panel.alarmo
+            name: Alarmo
+            show_state: true
+            state:
+              - value: disarmed
+                color: '#a7c7a0'
+              - value: triggered
+                color: '#d88d75'
+              - value: unavailable
+                color: '#777972'
+            tap_action:
+              action: more-info
+              confirmation:
+                title: Security
+                text: Open alarm controls?
+          - type: custom:button-card
+            entity: lock.virtual_front_door_lock
+            name: Front door
+            show_state: true
+            state:
+              - value: locked
+                color: '#a7c7a0'
+              - value: unlocked
+                color: '#d88d75'
+              - value: unavailable
+                color: '#777972'
+            tap_action:
+              action: toggle
+              confirmation:
+                title: Front door
+                text: Change the front door lock state?
+          - type: custom:button-card
+            entity: lock.back_door
+            name: Back door
+            show_state: true
+            state:
+              - value: locked
+                color: '#a7c7a0'
+              - value: unlocked
+                color: '#d88d75'
+              - value: unavailable
+                color: '#777972'
+            tap_action:
+              action: toggle
+              confirmation:
+                title: Back door
+                text: Change the back door lock state?
+          - type: tile
+            entity: sensor.car_presence
+            name: Car
+          - type: tile
+            entity: person.kcam
+            name: Kcam
+      - type: grid
+        column_span: 2
+        card_mod:
+          style: |
+            :host {
+              background: rgba(23, 26, 25, 0.88);
+            }
+        cards:
+          - type: heading
+            heading: Dashboards
+            icon: mdi:view-dashboard-outline
+          - type: custom:button-card
+            template: luxury_nav
+            name: Garage
+            icon: mdi:garage
+            tap_action:
+              action: navigate
+              navigation_path: /luxury-garage
+          - type: custom:button-card
+            template: luxury_nav
+            name: Remote
+            icon: mdi:remote
+            tap_action:
+              action: navigate
+              navigation_path: /luxury-remote
