@@ -43,6 +43,7 @@ class FakeClient:
         definitive_rejection_with_third_party=None,
         malformed_create_success=None,
         ambiguous_create_missing_registry=False,
+        resources=None,
     ):
         self.entries = entries
         self.original = {
@@ -84,6 +85,7 @@ class FakeClient:
         self.definitive_rejection_with_third_party = definitive_rejection_with_third_party
         self.malformed_create_success = malformed_create_success
         self.ambiguous_create_missing_registry = ambiguous_create_missing_registry
+        self.resources = [] if resources is None else resources
         self.commands = []
         self.configs = {}
         self.deleted = []
@@ -114,6 +116,8 @@ class FakeClient:
             return {key: dict(value) for key, value in self.panels.items()}
         if command_type == "get_states":
             return list(self.states)
+        if command_type == "lovelace/resources":
+            return [dict(resource) for resource in self.resources]
         if command_type == "lovelace/dashboards/create":
             dashboard = dict(payload)
             dashboard.pop("type")
@@ -224,6 +228,108 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertTrue(all(isinstance(entry["config_data"], dict) for entry in self.entries))
         self.assertEqual(self.entries[0]["config_data"]["title"], "Luxury Home")
+
+    def test_load_manifest_returns_validated_resource_requirements(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dashboards").mkdir()
+            (root / "dashboards" / "test.yaml").write_text(
+                "title: Luxury Test\n", encoding="utf-8"
+            )
+            manifest_path = root / "manifest.yaml"
+            manifest_path.write_text(
+                """resource_requirements:
+  - type: module
+    url_suffix: /endpoint/@scrypted/nvr/assets/web-components.js
+  - type: css
+    url_suffix: /endpoint/@scrypted/nvr/assets/web-components.css
+dashboards:
+  - url_path: luxury-test
+    title: Luxury Test
+    icon: mdi:cctv
+    mode: storage
+    show_in_sidebar: true
+    require_admin: false
+    config: dashboards/test.yaml
+""",
+                encoding="utf-8",
+            )
+
+            manifest = deploy_dashboards.load_manifest(root, manifest_path)
+
+            self.assertEqual(
+                manifest["resource_requirements"],
+                [
+                    {
+                        "type": "module",
+                        "url_suffix": "/endpoint/@scrypted/nvr/assets/web-components.js",
+                    },
+                    {
+                        "type": "css",
+                        "url_suffix": "/endpoint/@scrypted/nvr/assets/web-components.css",
+                    },
+                ],
+            )
+            self.assertEqual(
+                [entry["url_path"] for entry in manifest["entries"]], ["luxury-test"]
+            )
+
+        original_manifest = deploy_dashboards.load_manifest(ROOT, MANIFEST)
+        self.assertEqual(original_manifest["resource_requirements"], [])
+        self.assertEqual(
+            [entry["url_path"] for entry in deploy_dashboards.load_entries(ROOT, MANIFEST)],
+            ["luxury-home", "luxury-garage", "luxury-remote"],
+        )
+
+    def test_load_manifest_rejects_unsafe_resource_requirements(self):
+        invalid_requirements = [
+            "not-a-list",
+            ["not-a-mapping"],
+            [{"type": "javascript", "url_suffix": "/safe.js"}],
+            [{"type": "module", "url_suffix": "relative.js"}],
+            [{"type": "module", "url_suffix": "https://evil.example/x.js"}],
+            [{"type": "module", "url_suffix": "//evil.example/x.js"}],
+            [{"type": "module", "url_suffix": "/x.js?token=secret"}],
+            [{"type": "module", "url_suffix": "/x.js#fragment"}],
+            [
+                {"type": "module", "url_suffix": "/safe.js"},
+                {"type": "module", "url_suffix": "/safe.js"},
+            ],
+        ]
+        dashboard = {
+            "url_path": "luxury-test",
+            "title": "Luxury Test",
+            "icon": "mdi:cctv",
+            "mode": "storage",
+            "show_in_sidebar": True,
+            "require_admin": False,
+            "config": "dashboards/test.yaml",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "dashboards").mkdir()
+            (root / "dashboards" / "test.yaml").write_text(
+                "title: Luxury Test\n", encoding="utf-8"
+            )
+            manifest_path = root / "manifest.yaml"
+            for requirements in invalid_requirements:
+                with self.subTest(requirements=requirements):
+                    manifest_path.write_text(
+                        json.dumps(
+                            {
+                                "resource_requirements": requirements,
+                                "dashboards": [dashboard],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(
+                        deploy_dashboards.DeploymentError,
+                        "^Unable to load dashboard manifest or config YAML$",
+                    ) as raised:
+                        deploy_dashboards.load_manifest(root, manifest_path)
+                    self.assertNotIn(TOKEN, str(raised.exception))
+                    self.assertIsNone(raised.exception.__cause__)
 
     def test_load_entries_rejects_config_path_outside_root_without_leaking_contents(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -390,6 +496,152 @@ class DeploymentTests(unittest.TestCase):
             deploy_dashboards.preflight(
                 client, "https://ha.example.test", TOKEN, self.entries, resource_checker
             )
+
+    def test_preflight_verifies_dynamic_resources_without_persisting_runtime_url(self):
+        runtime_token = "runtime-query-secret"
+        runtime_url = (
+            "/endpoint/@scrypted/nvr/assets/web-components.js"
+            f"?token={runtime_token}"
+        )
+        requirement = {
+            "type": "module",
+            "url_suffix": "/endpoint/@scrypted/nvr/assets/web-components.js",
+        }
+        client = FakeClient(
+            self.entries,
+            resources=[{"type": "module", "url": runtime_url}],
+        )
+        checked = []
+
+        def checker(base_url, token, path):
+            checked.append((base_url, token, path))
+            return True
+
+        report = deploy_dashboards.preflight(
+            client,
+            "https://ha.example.test",
+            TOKEN,
+            self.entries,
+            resource_checker=checker,
+            resource_requirements=[requirement],
+        )
+
+        self.assertEqual(checked[-1], ("https://ha.example.test", TOKEN, runtime_url))
+        self.assertEqual(report["verified_resource_requirements"], [requirement])
+        self.assertNotIn(runtime_token, json.dumps(report))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact = Path(temp_dir) / "preflight.json"
+            deploy_dashboards.write_json(artifact, report)
+            self.assertNotIn(runtime_token, artifact.read_text(encoding="utf-8"))
+        self.assertIn({"type": "lovelace/resources"}, client.commands)
+
+    def test_preflight_rejects_missing_duplicate_and_wrong_type_dynamic_resources(self):
+        suffix = "/endpoint/@scrypted/nvr/assets/web-components.js"
+        requirement = {"type": "module", "url_suffix": suffix}
+        cases = [
+            [],
+            [
+                {"type": "module", "url": suffix + "?token=first-secret"},
+                {"type": "module", "url": suffix + "?token=second-secret"},
+            ],
+            [{"type": "css", "url": suffix + "?token=wrong-type-secret"}],
+        ]
+        for resources in cases:
+            with self.subTest(resources=resources):
+                client = FakeClient(self.entries, resources=resources)
+                with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                    deploy_dashboards.preflight(
+                        client,
+                        "https://ha.example.test",
+                        TOKEN,
+                        self.entries,
+                        resource_checker=lambda *_: True,
+                        resource_requirements=[requirement],
+                    )
+                message = str(raised.exception)
+                self.assertIn(suffix, message)
+                self.assertNotIn("first-secret", message)
+                self.assertNotIn("second-secret", message)
+                self.assertNotIn("wrong-type-secret", message)
+
+    def test_preflight_rejects_unsafe_registered_resource_urls(self):
+        suffix = "/endpoint/@scrypted/nvr/assets/web-components.js"
+        requirement = {"type": "module", "url_suffix": suffix}
+        unsafe_urls = [
+            "https://evil.example" + suffix,
+            "//evil.example" + suffix,
+            "https://user:password@evil.example" + suffix,
+            suffix + "#fragment",
+        ]
+        for registered_url in unsafe_urls:
+            with self.subTest(registered_url=registered_url):
+                client = FakeClient(
+                    self.entries,
+                    resources=[{"type": "module", "url": registered_url}],
+                )
+                checker = mock.Mock(return_value=True)
+                with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                    deploy_dashboards.preflight(
+                        client,
+                        "https://ha.example.test",
+                        TOKEN,
+                        self.entries,
+                        resource_checker=checker,
+                        resource_requirements=[requirement],
+                    )
+                self.assertIn(suffix, str(raised.exception))
+                self.assertNotIn(registered_url, str(raised.exception))
+                self.assertEqual(
+                    [call.args[2] for call in checker.call_args_list],
+                    list(deploy_dashboards.REQUIRED_RESOURCES),
+                )
+
+    def test_dynamic_resource_checker_failure_does_not_expose_runtime_query(self):
+        runtime_token = "runtime-error-secret"
+        suffix = "/endpoint/@scrypted/nvr/assets/web-components.css"
+        client = FakeClient(
+            self.entries,
+            resources=[{"type": "css", "url": suffix + f"?token={runtime_token}"}],
+        )
+        requirement = {"type": "css", "url_suffix": suffix}
+
+        def checker(_base_url, _token, runtime_url):
+            if runtime_token in runtime_url:
+                raise deploy_dashboards.DeploymentError(
+                    f"network failure for {runtime_url}"
+                )
+            return True
+
+        with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+            deploy_dashboards.preflight(
+                client,
+                "https://ha.example.test",
+                TOKEN,
+                self.entries,
+                resource_checker=checker,
+                resource_requirements=[requirement],
+            )
+        self.assertIn(suffix, str(raised.exception))
+        self.assertNotIn(runtime_token, str(raised.exception))
+
+    def test_preflight_without_dynamic_requirements_keeps_fixed_resource_checks(self):
+        client = FakeClient(self.entries)
+        checked = []
+        report = deploy_dashboards.preflight(
+            client,
+            "https://ha.example.test",
+            TOKEN,
+            self.entries,
+            lambda _base_url, _token, path: checked.append(path) or True,
+        )
+        self.assertEqual(checked, list(deploy_dashboards.REQUIRED_RESOURCES))
+        self.assertEqual(
+            report["verified_resources"], list(deploy_dashboards.REQUIRED_RESOURCES)
+        )
+        self.assertEqual(report["verified_resource_requirements"], [])
+        self.assertNotIn(
+            "lovelace/resources", [command["type"] for command in client.commands]
+        )
 
     def test_successful_deploy_preserves_original_and_writes_safe_artifacts(self):
         client = FakeClient(self.entries)
@@ -982,8 +1234,14 @@ class CliTests(unittest.TestCase):
         ), mock.patch.object(
             deploy_dashboards,
             "preflight",
-            side_effect=lambda fake_client, base_url, token, entries: real_preflight(
-                fake_client, base_url, token, entries, lambda *_: True
+            side_effect=lambda fake_client, base_url, token, entries,
+            resource_requirements=(): real_preflight(
+                fake_client,
+                base_url,
+                token,
+                entries,
+                lambda *_: True,
+                resource_requirements=resource_requirements,
             ),
         ), mock.patch(
             "sys.stdout", new=io.StringIO()
@@ -1021,8 +1279,14 @@ class CliTests(unittest.TestCase):
         ), mock.patch.object(
             deploy_dashboards,
             "preflight",
-            side_effect=lambda fake_client, base_url, token, entries: real_preflight(
-                fake_client, base_url, token, entries, lambda *_: True
+            side_effect=lambda fake_client, base_url, token, entries,
+            resource_requirements=(): real_preflight(
+                fake_client,
+                base_url,
+                token,
+                entries,
+                lambda *_: True,
+                resource_requirements=resource_requirements,
             ),
         ), mock.patch(
             "sys.stdout", new=io.StringIO()

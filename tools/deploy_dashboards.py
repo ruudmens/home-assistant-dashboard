@@ -21,6 +21,7 @@ REQUIRED_RESOURCES = (
     "/hacsfiles/lovelace-card-mod/card-mod.js",
     "/hacsfiles/stack-in-card/stack-in-card.js",
 )
+RESOURCE_TYPES = {"module", "css"}
 
 
 class DeploymentError(RuntimeError):
@@ -68,8 +69,35 @@ def make_ws_url(base_url):
     return urllib_parse.urlunsplit((scheme, parsed.netloc, path, "", ""))
 
 
-def load_entries(root, manifest_path):
-    """Load the ordered manifest entries and their YAML dashboard configs."""
+def _validate_resource_requirements(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("invalid resource requirements")
+    requirements = []
+    seen = set()
+    for requirement in value:
+        if not isinstance(requirement, dict) or set(requirement) != {"type", "url_suffix"}:
+            raise ValueError("invalid resource requirement")
+        resource_type = requirement["type"]
+        suffix = requirement["url_suffix"]
+        if type(resource_type) is not str or resource_type not in RESOURCE_TYPES:
+            raise ValueError("invalid resource type")
+        if type(suffix) is not str or not suffix.startswith("/") or suffix.startswith("//"):
+            raise ValueError("invalid resource suffix")
+        parsed = urllib_parse.urlsplit(suffix)
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or parsed.path != suffix:
+            raise ValueError("invalid resource suffix")
+        key = (resource_type, suffix)
+        if key in seen:
+            raise ValueError("duplicate resource requirement")
+        seen.add(key)
+        requirements.append({"type": resource_type, "url_suffix": suffix})
+    return requirements
+
+
+def load_manifest(root, manifest_path):
+    """Load validated resource requirements and ordered dashboard entries."""
     try:
         root = Path(root).resolve()
         manifest_path = Path(manifest_path)
@@ -80,6 +108,9 @@ def load_entries(root, manifest_path):
             manifest = yaml.safe_load(manifest_file)
         if not isinstance(manifest, dict) or not isinstance(manifest.get("dashboards"), list):
             raise ValueError("invalid manifest structure")
+        resource_requirements = _validate_resource_requirements(
+            manifest.get("resource_requirements")
+        )
         entries = []
         for manifest_entry in manifest["dashboards"]:
             if not isinstance(manifest_entry, dict):
@@ -103,9 +134,17 @@ def load_entries(root, manifest_path):
             if not isinstance(entry["config_data"], dict):
                 raise ValueError("dashboard config must be a mapping")
             entries.append(entry)
-        return entries
+        return {
+            "entries": entries,
+            "resource_requirements": resource_requirements,
+        }
     except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError):
         raise DeploymentError("Unable to load dashboard manifest or config YAML") from None
+
+
+def load_entries(root, manifest_path):
+    """Load ordered dashboard entries for compatibility with existing callers."""
+    return load_manifest(root, manifest_path)["entries"]
 
 
 def collect_entity_ids(value):
@@ -255,7 +294,50 @@ def http_resource_status(base_url, token, path):
         ) from None
 
 
-def preflight(client, base_url, token, entries, resource_checker=http_resource_status):
+def _resolve_registered_resource(resources, requirement):
+    suffix = requirement["url_suffix"]
+    resource_type = requirement["type"]
+    if not isinstance(resources, list):
+        raise DeploymentError(f"Invalid frontend resource registry for {suffix}")
+    matches = []
+    for resource in resources:
+        if not isinstance(resource, dict) or resource.get("type") != resource_type:
+            continue
+        registered_url = resource.get("url")
+        try:
+            parsed = urllib_parse.urlsplit(registered_url)
+            unsafe = (
+                type(registered_url) is not str
+                or not registered_url
+                or not registered_url.startswith("/")
+                or registered_url.startswith("//")
+                or parsed.scheme
+                or parsed.netloc
+                or parsed.username
+                or parsed.password
+                or parsed.fragment
+            )
+        except (TypeError, UnicodeError, ValueError):
+            unsafe = True
+        if unsafe:
+            raise DeploymentError(f"Unsafe registered frontend resource for {suffix}")
+        if parsed.path.endswith(suffix):
+            matches.append(registered_url)
+    if len(matches) != 1:
+        raise DeploymentError(
+            f"Expected exactly one registered frontend resource for {suffix}"
+        )
+    return matches[0]
+
+
+def preflight(
+    client,
+    base_url,
+    token,
+    entries,
+    resource_checker=http_resource_status,
+    resource_requirements=(),
+):
     """Validate collision, entity, and resource prerequisites without mutation."""
     target_paths = [entry["url_path"] for entry in entries]
     duplicate_paths = sorted(
@@ -307,12 +389,33 @@ def preflight(client, base_url, token, entries, resource_checker=http_resource_s
     if missing_resources:
         raise DeploymentError("Missing frontend resources: " + ", ".join(missing_resources))
 
+    if resource_requirements:
+        registered_resources = client.command({"type": "lovelace/resources"})
+        for requirement in resource_requirements:
+            suffix = requirement["url_suffix"]
+            registered_url = _resolve_registered_resource(
+                registered_resources, requirement
+            )
+            try:
+                available = resource_checker(base_url, token, registered_url)
+            except Exception:
+                raise DeploymentError(
+                    f"Unable to verify required frontend resource {suffix}"
+                ) from None
+            if not available:
+                raise DeploymentError(
+                    f"Missing required frontend resource {suffix}"
+                )
+
     return {
         "status": "ready",
         "original_dashboards": original_dashboards,
         "target_paths": target_paths,
         "verified_entities": sorted(required_entities),
         "verified_resources": list(REQUIRED_RESOURCES),
+        "verified_resource_requirements": [
+            dict(requirement) for requirement in resource_requirements
+        ],
     }
 
 
@@ -550,9 +653,17 @@ def main(argv=None):
     if not artifact_dir.is_absolute():
         artifact_dir = root / artifact_dir
     try:
-        entries = load_entries(root, args.manifest)
+        manifest = load_manifest(root, args.manifest)
+        entries = manifest["entries"]
+        resource_requirements = manifest["resource_requirements"]
         with HomeAssistantWebSocket(args.base_url, token) as client:
-            report = preflight(client, args.base_url, token, entries)
+            report = preflight(
+                client,
+                args.base_url,
+                token,
+                entries,
+                resource_requirements=resource_requirements,
+            )
             write_json(artifact_dir / "preflight.json", report)
             if args.apply:
                 result = deploy(client, entries, report, artifact_dir)
