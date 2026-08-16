@@ -53,6 +53,15 @@ views:
             show_seconds: false
             time_format: '12'
             no_background: true
+          - type: markdown
+            content: "{{ now().strftime('%A, %B %-d') }}"
+            card_mod:
+              style: |
+                ha-card {
+                  background: transparent;
+                  border: 0;
+                  color: #f6f3ec;
+                }
           - type: weather-forecast
             entity: weather.home
             forecast_type: daily
@@ -240,6 +249,22 @@ views:
             state:
               - value: disarmed
                 color: '#a7c7a0'
+              - value: armed_home
+                color: '#a7c7a0'
+              - value: armed_away
+                color: '#a7c7a0'
+              - value: armed_night
+                color: '#a7c7a0'
+              - value: armed_vacation
+                color: '#a7c7a0'
+              - value: armed_custom_bypass
+                color: '#a7c7a0'
+              - value: arming
+                color: '#d5b77a'
+              - value: pending
+                color: '#d5b77a'
+              - value: disarming
+                color: '#d5b77a'
               - value: triggered
                 color: '#d88d75'
               - value: unavailable
@@ -258,6 +283,14 @@ views:
                 color: '#a7c7a0'
               - value: unlocked
                 color: '#d88d75'
+              - value: open
+                color: '#d88d75'
+              - value: jammed
+                color: '#d88d75'
+              - value: locking
+                color: '#d5b77a'
+              - value: unlocking
+                color: '#d5b77a'
               - value: unavailable
                 color: '#777972'
             tap_action:
@@ -274,6 +307,14 @@ views:
                 color: '#a7c7a0'
               - value: unlocked
                 color: '#d88d75'
+              - value: open
+                color: '#d88d75'
+              - value: jammed
+                color: '#d88d75'
+              - value: locking
+                color: '#d5b77a'
+              - value: unlocking
+                color: '#d5b77a'
               - value: unavailable
                 color: '#777972'
             tap_action:

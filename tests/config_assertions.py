@@ -29,12 +29,12 @@ def walk(value: Any) -> Iterator[dict | list]:
 
 
 def referenced_entities(config: dict) -> set[str]:
-    """Return valid entity IDs used under entity and entity_id keys."""
+    """Return valid entity IDs used under entity, entity_id, and entities keys."""
     entities: set[str] = set()
     for node in walk(config):
         if not isinstance(node, dict):
             continue
-        for key in ("entity", "entity_id"):
+        for key in ("entity", "entity_id", "entities"):
             value = node.get(key)
             values = value if isinstance(value, list) else [value]
             entities.update(
