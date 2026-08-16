@@ -444,6 +444,8 @@ def deploy(client, entries, preflight_report, artifact_dir):
         if ambiguous_by_path:
             try:
                 reconciled_dashboards = client.command({"type": "lovelace/dashboards/list"})
+                reconciled_ambiguous_paths = set()
+                manual_reconciliation_paths = set()
                 for dashboard in reconciled_dashboards:
                     dashboard_id = dashboard.get("id")
                     url_path = dashboard.get("url_path")
@@ -461,7 +463,9 @@ def deploy(client, entries, preflight_report, artifact_dir):
                             "Dashboard metadata did not match attempted path "
                             + f"{url_path}; manual reconciliation needed"
                         )
+                        manual_reconciliation_paths.add(url_path)
                         continue
+                    reconciled_ambiguous_paths.add(url_path)
                     if not dashboard_id:
                         rollback_errors.append(
                             "Cannot delete reconciled dashboard without ID at attempted path "
@@ -469,6 +473,15 @@ def deploy(client, entries, preflight_report, artifact_dir):
                         )
                         continue
                     rollback_candidates[dashboard_id] = dashboard
+                for ambiguous_path in ambiguous_paths:
+                    if (
+                        ambiguous_path not in reconciled_ambiguous_paths
+                        and ambiguous_path not in manual_reconciliation_paths
+                    ):
+                        rollback_errors.append(
+                            "No exact dashboard metadata match for ambiguous path "
+                            + f"{ambiguous_path}; manual reconciliation needed"
+                        )
             except Exception:
                 rollback_errors.append("Failed to reconcile dashboard registry during rollback")
 

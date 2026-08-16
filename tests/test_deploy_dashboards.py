@@ -42,6 +42,7 @@ class FakeClient:
         mismatched_ambiguous_create=False,
         definitive_rejection_with_third_party=None,
         malformed_create_success=None,
+        ambiguous_create_missing_registry=False,
     ):
         self.entries = entries
         self.original = {
@@ -82,6 +83,7 @@ class FakeClient:
         self.mismatched_ambiguous_create = mismatched_ambiguous_create
         self.definitive_rejection_with_third_party = definitive_rejection_with_third_party
         self.malformed_create_success = malformed_create_success
+        self.ambiguous_create_missing_registry = ambiguous_create_missing_registry
         self.commands = []
         self.configs = {}
         self.deleted = []
@@ -132,6 +134,12 @@ class FakeClient:
                 dashboard["title"] = "Concurrent dashboard"
             self.dashboards.append(dashboard)
             if payload["url_path"] == self.fail_create_after_append:
+                if self.ambiguous_create_missing_registry:
+                    self.dashboards = [
+                        current
+                        for current in self.dashboards
+                        if current.get("id") != dashboard["id"]
+                    ]
                 if self.third_party_remote_on_create_failure:
                     remote_entry = next(
                         entry for entry in self.entries if entry["url_path"] == "luxury-remote"
@@ -559,6 +567,30 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue(
             any("manual reconciliation" in message.lower() for message in failure["rollback_errors"])
         )
+
+    def test_ambiguous_create_without_registry_match_requires_manual_reconciliation(self):
+        client = FakeClient(
+            self.entries,
+            fail_create_after_append="luxury-home",
+            ambiguous_create_missing_registry=True,
+        )
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(deploy_dashboards.DeploymentError):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure_text = (Path(temp_dir) / "deployment-failure.json").read_text(
+                encoding="utf-8"
+            )
+            failure = json.loads(failure_text)
+        self.assertEqual(client.deleted, [])
+        self.assertEqual(client.dashboards, [client.original])
+        self.assertEqual(failure["status"], "rollback_incomplete")
+        self.assertTrue(
+            any("manual reconciliation" in message.lower() for message in failure["rollback_errors"])
+        )
+        self.assertNotIn(TOKEN, failure_text)
 
     def test_failed_rollback_reconciliation_is_recorded_incomplete(self):
         client = FakeClient(
