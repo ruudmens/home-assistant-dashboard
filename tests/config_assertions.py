@@ -78,6 +78,11 @@ def iter_lovelace_cards(config: dict) -> Iterator[tuple[str, dict]]:
     for view_index, view in enumerate(config.get("views", [])):
         if not isinstance(view, dict):
             continue
+        header = view.get("header")
+        if isinstance(header, dict) and isinstance(header.get("card"), dict):
+            yield from _iter_card_tree(
+                header["card"], f"views[{view_index}].header.card", seen_card_ids
+            )
         for section_index, section in enumerate(view.get("sections", [])):
             if not isinstance(section, dict):
                 continue

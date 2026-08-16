@@ -108,6 +108,7 @@ def action_record(
 
 
 EXACT_CARD_INVENTORY = [
+    ("views[0].header.card", "markdown", None, None, None),
     ("views[0].sections[0].cards[0]", "heading", None, None, "Security"),
     ("views[0].sections[0].cards[1]", "custom:button-card", "alarm_control_panel.alarmo", "Alarmo", None),
     ("views[0].sections[0].cards[2]", "custom:button-card", "lock.virtual_front_door_lock", "Front door", None),
@@ -403,6 +404,28 @@ class LuxuryRemoteTests(unittest.TestCase):
             config_assertions.explicit_action_records(nested_device_target), EXACT_ACTION_RECORDS
         )
 
+        header_device_target = deepcopy(self.config)
+        header_device_target["views"][0]["header"]["card"]["tap_action"] = {
+            "action": "perform-action",
+            "perform_action": "script.turn_on",
+            "target": {"device_id": "unrelated-device"},
+        }
+        self.assertEqual(config_assertions.action_contract_violations(header_device_target), [])
+        header_actions = config_assertions.explicit_action_records(header_device_target)
+        self.assertNotEqual(
+            header_actions, EXACT_ACTION_RECORDS
+        )
+        self.assertIn(
+            action_record(
+                "views[0].header.card",
+                "tap_action",
+                "perform-action",
+                perform_action="script.turn_on",
+                device_id="unrelated-device",
+            ),
+            header_actions,
+        )
+
     def test_embedded_custom_field_actions_are_in_the_exact_recursive_inventory(self):
         custom_field_device_target = deepcopy(self.config)
         custom_field_device_target["views"][0]["sections"][0]["cards"][1]["custom_fields"] = {
@@ -452,7 +475,9 @@ class LuxuryRemoteTests(unittest.TestCase):
         alarmo["card"] = shared_card
         alarmo["custom_fields"] = {"danger": {"card": shared_card}}
         shared_inventory = [
-            card for card in card_inventory(overlapping_cards) if card[1] == "markdown"
+            card
+            for card in card_inventory(overlapping_cards)
+            if card[0].startswith("views[0].sections[0].cards[1].")
         ]
         self.assertEqual(
             shared_inventory,
