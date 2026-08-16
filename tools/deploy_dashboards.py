@@ -37,16 +37,24 @@ def _redact(message, *secrets):
 
 def make_ws_url(base_url):
     """Convert an HTTP(S) Home Assistant base URL to its WebSocket URL."""
-    parsed = urllib_parse.urlsplit(base_url)
+    error_message = "Home Assistant URL must be a valid http or https URL"
+    try:
+        parsed = urllib_parse.urlsplit(base_url)
+        hostname = parsed.hostname
+        parsed.port
+    except (TypeError, UnicodeError, ValueError):
+        raise DeploymentError(error_message) from None
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
+        or not hostname
+        or any(character.isspace() for character in parsed.netloc)
         or parsed.username
         or parsed.password
         or parsed.query
         or parsed.fragment
     ):
-        raise DeploymentError("Home Assistant URL must be a valid http or https URL")
+        raise DeploymentError(error_message)
     scheme = "wss" if parsed.scheme == "https" else "ws"
     path = parsed.path.rstrip("/") + "/api/websocket"
     return urllib_parse.urlunsplit((scheme, parsed.netloc, path, "", ""))
@@ -119,7 +127,10 @@ class HomeAssistantWebSocket:
                 raise DeploymentError("Home Assistant WebSocket authentication failed")
             return self
         except Exception as exc:
-            self.close()
+            try:
+                self.close()
+            except DeploymentError:
+                pass
             if isinstance(exc, DeploymentError):
                 raise
             raise DeploymentError(
@@ -128,13 +139,19 @@ class HomeAssistantWebSocket:
 
     def close(self):
         if self.connection is not None:
+            connection = self.connection
+            self.connection = None
             try:
-                self.connection.close()
-            finally:
-                self.connection = None
+                connection.close()
+            except Exception:
+                raise DeploymentError("Failed to close Home Assistant WebSocket") from None
 
-    def __exit__(self, _exc_type, _exc_value, _traceback):
-        self.close()
+    def __exit__(self, exc_type, _exc_value, _traceback):
+        try:
+            self.close()
+        except DeploymentError:
+            if exc_type is None:
+                raise
         return False
 
     def command(self, payload):

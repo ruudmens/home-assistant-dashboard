@@ -99,10 +99,11 @@ class FakeClient:
 
 
 class FakeConnection:
-    def __init__(self, messages):
+    def __init__(self, messages, close_error=None):
         self.messages = [json.dumps(message) for message in messages]
         self.sent = []
         self.closed = False
+        self.close_error = close_error
 
     def recv(self):
         return self.messages.pop(0)
@@ -112,6 +113,8 @@ class FakeConnection:
 
     def close(self):
         self.closed = True
+        if self.close_error:
+            raise self.close_error
 
 
 class DeploymentTests(unittest.TestCase):
@@ -141,6 +144,16 @@ class DeploymentTests(unittest.TestCase):
         for value in ("ftp://ha.example.test", "ha.example.test", "https:///missing-host"):
             with self.subTest(value=value), self.assertRaises(deploy_dashboards.DeploymentError):
                 deploy_dashboards.make_ws_url(value)
+
+    def test_make_ws_url_wraps_unclosed_ipv6_address(self):
+        with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+            deploy_dashboards.make_ws_url("http://[::1")
+        self.assertIsNone(raised.exception.__cause__)
+
+    def test_make_ws_url_rejects_non_numeric_port(self):
+        with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+            deploy_dashboards.make_ws_url("https://ha.example.test:notaport")
+        self.assertIsNone(raised.exception.__cause__)
 
     def test_collect_entity_ids_catches_camera_image_and_skips_service_values(self):
         config = {
@@ -343,6 +356,69 @@ class WebSocketTests(unittest.TestCase):
                     pass
         self.assertTrue(connection.closed)
 
+    def test_auth_failure_is_not_masked_by_close_failure(self):
+        connection = FakeConnection(
+            [{"type": "auth_required"}, {"type": "auth_invalid"}],
+            close_error=RuntimeError(f"close leaked {TOKEN}"),
+        )
+        with mock.patch.object(
+            deploy_dashboards.websocket, "create_connection", return_value=connection
+        ):
+            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                with deploy_dashboards.HomeAssistantWebSocket(
+                    "https://ha.example.test", TOKEN
+                ):
+                    pass
+        self.assertIn("authentication failed", str(raised.exception))
+        self.assertNotIn("close", str(raised.exception))
+        self.assertNotIn(TOKEN, str(raised.exception))
+
+    def test_command_failure_is_not_masked_by_close_failure(self):
+        connection = FakeConnection(
+            [
+                {"type": "auth_required"},
+                {"type": "auth_ok"},
+                {
+                    "id": 1,
+                    "type": "result",
+                    "success": False,
+                    "error": {"code": "invalid_format", "message": "bad command"},
+                },
+            ],
+            close_error=RuntimeError(f"close leaked {TOKEN}"),
+        )
+        with mock.patch.object(
+            deploy_dashboards.websocket, "create_connection", return_value=connection
+        ):
+            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                with deploy_dashboards.HomeAssistantWebSocket(
+                    "https://ha.example.test", TOKEN
+                ) as client:
+                    client.command({"type": "lovelace/config/save"})
+        self.assertIn("lovelace/config/save", str(raised.exception))
+        self.assertIn("invalid_format", str(raised.exception))
+        self.assertNotIn("close leaked", str(raised.exception))
+        self.assertNotIn(TOKEN, str(raised.exception))
+
+    def test_clean_exit_close_failure_is_safe(self):
+        connection = FakeConnection(
+            [{"type": "auth_required"}, {"type": "auth_ok"}],
+            close_error=RuntimeError(f"close leaked {TOKEN}"),
+        )
+        with mock.patch.object(
+            deploy_dashboards.websocket, "create_connection", return_value=connection
+        ):
+            with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                with deploy_dashboards.HomeAssistantWebSocket(
+                    "https://ha.example.test", TOKEN
+                ):
+                    pass
+        self.assertEqual(
+            str(raised.exception), "Failed to close Home Assistant WebSocket"
+        )
+        self.assertNotIn(TOKEN, str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+
     def test_failed_command_names_command_and_error_without_token(self):
         connection = FakeConnection(
             [
@@ -385,6 +461,18 @@ class CliTests(unittest.TestCase):
             "sys.stderr", new=io.StringIO()
         ):
             self.assertEqual(deploy_dashboards.main([]), 2)
+
+    def test_main_reports_malformed_url_without_traceback(self):
+        with mock.patch.dict(os.environ, {"HA_TOKEN": TOKEN}, clear=True), mock.patch(
+            "sys.stderr", new=io.StringIO()
+        ) as stderr:
+            result = deploy_dashboards.main(
+                ["--base-url", "http://[::1", "--manifest", str(MANIFEST)]
+            )
+        self.assertEqual(result, 1)
+        self.assertIn("valid http or https URL", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.assertNotIn(TOKEN, stderr.getvalue())
 
     def test_main_dry_run_writes_preflight_without_network(self):
         client = FakeClient(deploy_dashboards.load_entries(ROOT, MANIFEST))
