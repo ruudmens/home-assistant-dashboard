@@ -596,6 +596,32 @@ dashboards:
                     list(deploy_dashboards.REQUIRED_RESOURCES),
                 )
 
+    def test_preflight_ignores_unsafe_same_type_resources_with_unrelated_paths(self):
+        suffix = "/endpoint/@scrypted/nvr/assets/web-components.js"
+        runtime_url = suffix + "?token=runtime-query-secret"
+        requirement = {"type": "module", "url_suffix": suffix}
+        client = FakeClient(
+            self.entries,
+            resources=[
+                {"type": "module", "url": "https://evil.example/unrelated.js"},
+                {"type": "module", "url": "/unrelated.css#fragment"},
+                {"type": "module", "url": runtime_url},
+            ],
+        )
+        checker = mock.Mock(return_value=True)
+
+        report = deploy_dashboards.preflight(
+            client,
+            "https://ha.example.test",
+            TOKEN,
+            self.entries,
+            resource_checker=checker,
+            resource_requirements=[requirement],
+        )
+
+        self.assertEqual(report["verified_resource_requirements"], [requirement])
+        self.assertEqual(checker.call_args_list[-1].args[2], runtime_url)
+
     def test_dynamic_resource_checker_failure_does_not_expose_runtime_query(self):
         runtime_token = "runtime-error-secret"
         suffix = "/endpoint/@scrypted/nvr/assets/web-components.css"

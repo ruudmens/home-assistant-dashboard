@@ -306,23 +306,23 @@ def _resolve_registered_resource(resources, requirement):
         registered_url = resource.get("url")
         try:
             parsed = urllib_parse.urlsplit(registered_url)
-            unsafe = (
-                type(registered_url) is not str
-                or not registered_url
-                or not registered_url.startswith("/")
-                or registered_url.startswith("//")
-                or parsed.scheme
-                or parsed.netloc
-                or parsed.username
-                or parsed.password
-                or parsed.fragment
-            )
         except (TypeError, UnicodeError, ValueError):
-            unsafe = True
+            continue
+        if type(registered_url) is not str or not parsed.path.endswith(suffix):
+            continue
+        unsafe = (
+            not registered_url
+            or not registered_url.startswith("/")
+            or registered_url.startswith("//")
+            or parsed.scheme
+            or parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.fragment
+        )
         if unsafe:
             raise DeploymentError(f"Unsafe registered frontend resource for {suffix}")
-        if parsed.path.endswith(suffix):
-            matches.append(registered_url)
+        matches.append(registered_url)
     if len(matches) != 1:
         raise DeploymentError(
             f"Expected exactly one registered frontend resource for {suffix}"
