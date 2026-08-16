@@ -1,0 +1,140 @@
+title: Luxury Garage
+button_card_templates:
+  luxury_nav:
+    show_state: false
+    size: 28px
+    styles:
+      card:
+        - border-radius: 18px
+        - border: 1px solid rgba(213, 183, 122, 0.24)
+        - background: linear-gradient(145deg, rgba(36, 39, 37, 0.96), rgba(18, 20, 20, 0.96))
+        - color: '#f6f3ec'
+        - padding: 16px
+      icon:
+        - color: '#d5b77a'
+views:
+  - title: Garage
+    path: garage
+    icon: mdi:garage
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+    header:
+      layout: responsive
+      badges_position: bottom
+      card:
+        type: markdown
+        content: |
+          # Luxury Garage
+          Door, light, motion, and entry-sensor health at a glance.
+        card_mod:
+          style: |
+            ha-card {
+              background: transparent;
+              border: 0;
+              color: #f6f3ec;
+            }
+    sections:
+      - type: grid
+        column_span: 2
+        background:
+          color: '#1c1a16'
+          opacity: 92
+        cards:
+          - type: heading
+            heading: Garage door
+            icon: mdi:garage-variant
+          - type: custom:button-card
+            entity: binary_sensor.lumi_lumi_sensor_magnet_aq2_a84a2103_on_off
+            name: Door position
+            show_state: true
+            state:
+              - value: 'off'
+                color: '#a7c7a0'
+              - value: 'on'
+                color: '#d88d75'
+              - value: unavailable
+                color: '#777972'
+            tap_action:
+              action: more-info
+          - type: markdown
+            content: '**Status only.** No garage-door opener entity is available, so this dashboard never presents an open or close command.'
+      - type: grid
+        background:
+          color: '#171a19'
+          opacity: 90
+        cards:
+          - type: heading
+            heading: Controls
+            icon: mdi:gesture-tap-button
+          - type: tile
+            entity: light.garage_2
+            name: Garage light
+            icon: mdi:lightbulb
+            color: amber
+          - type: button
+            entity: script.1645405163026
+            name: Garage Snapshot
+            icon: mdi:camera
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.1645405163026
+      - type: grid
+        background:
+          color: '#1c1a16'
+          opacity: 90
+        cards:
+          - type: heading
+            heading: Sensor health
+            icon: mdi:access-point-check
+          - type: tile
+            entity: binary_sensor.garage_motionsensor
+            name: Motion
+          - type: tile
+            entity: binary_sensor.garage_online
+            name: Connection
+          - type: tile
+            entity: sensor.lumi_lumi_sensor_magnet_aq2_power
+            name: Entry sensor battery
+          - type: tile
+            entity: sensor.lumi_lumi_sensor_magnet_aq2_device_temperature
+            name: Entry sensor temperature
+      - type: grid
+        background:
+          color: '#171a19'
+          opacity: 90
+        cards:
+          - type: heading
+            heading: Home climate context
+            icon: mdi:home-thermometer-outline
+          - type: thermostat
+            entity: climate.my_ecobee
+            name: Main home
+          - type: tile
+            entity: sensor.my_ecobee_temperature
+            name: Indoor temperature
+      - type: grid
+        column_span: 2
+        background:
+          color: '#171a19'
+          opacity: 88
+        cards:
+          - type: heading
+            heading: Dashboards
+            icon: mdi:view-dashboard-outline
+          - type: custom:button-card
+            template: luxury_nav
+            name: Home
+            icon: mdi:home-heart
+            tap_action:
+              action: navigate
+              navigation_path: /luxury-home
+          - type: custom:button-card
+            template: luxury_nav
+            name: Remote
+            icon: mdi:remote
+            tap_action:
+              action: navigate
+              navigation_path: /luxury-remote
