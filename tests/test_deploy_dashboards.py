@@ -497,6 +497,7 @@ class DeploymentTests(unittest.TestCase):
             [dashboard["id"] for dashboard in client.dashboards],
             ["overview", "third-party-luxury-home-id"],
         )
+        self.assertEqual(client.list_calls, 1)
         self.assertEqual(failure["status"], "rolled_back")
 
     def test_malformed_successful_create_is_reconciled_as_ambiguous(self):

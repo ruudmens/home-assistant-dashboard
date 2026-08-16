@@ -441,35 +441,36 @@ def deploy(client, entries, preflight_report, artifact_dir):
             dashboard_id = dashboard.get("id")
             if dashboard_id and dashboard_id not in original_ids:
                 rollback_candidates[dashboard_id] = dashboard
-        try:
-            reconciled_dashboards = client.command({"type": "lovelace/dashboards/list"})
-            for dashboard in reconciled_dashboards:
-                dashboard_id = dashboard.get("id")
-                url_path = dashboard.get("url_path")
-                if url_path not in ambiguous_by_path or dashboard_id in original_ids:
-                    continue
-                if dashboard_id in rollback_candidates:
-                    continue
-                expected_dashboard = ambiguous_by_path[url_path]
-                metadata_matches = all(
-                    dashboard.get(field) == expected_value
-                    for field, expected_value in expected_dashboard.items()
-                )
-                if not metadata_matches:
-                    rollback_errors.append(
-                        "Dashboard metadata did not match attempted path "
-                        + f"{url_path}; manual reconciliation needed"
+        if ambiguous_by_path:
+            try:
+                reconciled_dashboards = client.command({"type": "lovelace/dashboards/list"})
+                for dashboard in reconciled_dashboards:
+                    dashboard_id = dashboard.get("id")
+                    url_path = dashboard.get("url_path")
+                    if url_path not in ambiguous_by_path or dashboard_id in original_ids:
+                        continue
+                    if dashboard_id in rollback_candidates:
+                        continue
+                    expected_dashboard = ambiguous_by_path[url_path]
+                    metadata_matches = all(
+                        dashboard.get(field) == expected_value
+                        for field, expected_value in expected_dashboard.items()
                     )
-                    continue
-                if not dashboard_id:
-                    rollback_errors.append(
-                        "Cannot delete reconciled dashboard without ID at attempted path "
-                        + f"{url_path}; manual reconciliation needed"
-                    )
-                    continue
-                rollback_candidates[dashboard_id] = dashboard
-        except Exception:
-            rollback_errors.append("Failed to reconcile dashboard registry during rollback")
+                    if not metadata_matches:
+                        rollback_errors.append(
+                            "Dashboard metadata did not match attempted path "
+                            + f"{url_path}; manual reconciliation needed"
+                        )
+                        continue
+                    if not dashboard_id:
+                        rollback_errors.append(
+                            "Cannot delete reconciled dashboard without ID at attempted path "
+                            + f"{url_path}; manual reconciliation needed"
+                        )
+                        continue
+                    rollback_candidates[dashboard_id] = dashboard
+            except Exception:
+                rollback_errors.append("Failed to reconcile dashboard registry during rollback")
 
         ordered_candidates = []
         ordered_candidate_ids = set()
