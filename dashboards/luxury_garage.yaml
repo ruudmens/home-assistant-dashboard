@@ -12,6 +12,9 @@ button_card_templates:
         - padding: 16px
       icon:
         - color: '#d5b77a'
+      name:
+        - font-size: 13px
+        - font-weight: 600
 views:
   - title: Garage
     path: garage

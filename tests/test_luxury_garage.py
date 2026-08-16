@@ -33,6 +33,31 @@ class LuxuryGarageTests(unittest.TestCase):
     def test_uses_two_column_dense_sections(self):
         assert_sections_view(self, self.config, max_columns=2)
 
+    def test_header_uses_a_singular_responsive_card(self):
+        header = self.config["views"][0]["header"]
+        self.assertEqual(header["layout"], "responsive")
+        self.assertIn("card", header)
+        self.assertNotIn("cards", header)
+
+    def test_navigation_template_has_complete_luxury_styles(self):
+        template = self.config["button_card_templates"]["luxury_nav"]
+        self.assertFalse(template["show_state"])
+        self.assertEqual(template["size"], "28px")
+        self.assertEqual(
+            template["styles"],
+            {
+                "card": [
+                    {"border-radius": "18px"},
+                    {"border": "1px solid rgba(213, 183, 122, 0.24)"},
+                    {"background": "linear-gradient(145deg, rgba(36, 39, 37, 0.96), rgba(18, 20, 20, 0.96))"},
+                    {"color": "#f6f3ec"},
+                    {"padding": "16px"},
+                ],
+                "icon": [{"color": "#d5b77a"}],
+                "name": [{"font-size": "13px"}, {"font-weight": 600}],
+            },
+        )
+
     def test_references_only_expected_entities(self):
         self.assertEqual(referenced_entities(self.config), EXPECTED)
 
