@@ -128,3 +128,49 @@ Nothing here will work until you point it at your own devices. Search and replac
 ## License
 
 See [LICENSE](LICENSE). Feel free to fork, adapt, and share.
+
+## Responsive Luxury dashboards
+
+The responsive Luxury dashboards are additive storage-mode dashboards. Their final URLs are:
+
+| Dashboard | URL |
+|---|---|
+| Luxury Home | `/luxury-home/home` |
+| Luxury Garage | `/luxury-garage/garage` |
+| Luxury Remote | `/luxury-remote/remote` |
+
+The deployer is additive: it stops before applying changes when it finds a dashboard, frontend-panel, or duplicate-path collision. It validates every live entity and required HACS resource, reads saved configurations back, and verifies both the original records and newly created records. Its automatic reverse rollback is limited to dashboards confirmed as created by the run or safely reconciled to that run.
+
+### Local validation
+
+```powershell
+python -m pip install -r requirements-dashboard.txt
+python -m unittest discover -s tests -v
+```
+
+### Credential-safe deployment preflight
+
+Set the Home Assistant URL, enter a temporary token only through a secure prompt, convert it only into the process-scoped `HA_TOKEN` environment variable, and start in dry-run mode:
+
+```powershell
+$env:HA_URL = 'https://kcam-hassio.duckdns.org:8123'
+$secureToken = Read-Host -AsSecureString 'Home Assistant temporary token'
+$env:HA_TOKEN = [System.Net.NetworkCredential]::new('', $secureToken).Password
+python tools/deploy_dashboards.py
+```
+
+A successful dry run prints its status and writes credential-free deployment evidence to ignored `artifacts/`. Never show a raw token. Files in `artifacts/` must contain no `access_token`, `HA_TOKEN`, or `Bearer` value.
+
+To apply after a successful preflight:
+
+```powershell
+python tools/deploy_dashboards.py --apply
+Remove-Item Env:HA_TOKEN
+Remove-Variable secureToken
+```
+
+After verified success, close-frame warnings are non-fatal and appear in the result warnings. Revoke the temporary token from your Home Assistant profile after verification.
+
+### Rollback and cleanup
+
+After a successful deployment, use **Settings -> Dashboards** to delete only the three Luxury dashboards. If an apply fails, the deployer automatically rolls back dashboards it owns and created; it reports incomplete or manual reconciliation when ownership cannot be proven.

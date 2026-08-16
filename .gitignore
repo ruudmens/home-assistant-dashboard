@@ -1,5 +1,12 @@
 secrets.yaml
 .DS_Store
 
+# Local HA deployment evidence and instance metadata are never committed.
+artifacts/
+
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+
 # Isolated local worktrees
 .worktrees/
