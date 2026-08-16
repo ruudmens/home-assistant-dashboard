@@ -38,6 +38,8 @@ class FakeClient:
         changed_created_on_final=None,
         fail_reconcile=False,
         wrong_created_path=None,
+        third_party_remote_on_create_failure=False,
+        mismatched_ambiguous_create=False,
     ):
         self.entries = entries
         self.original = {
@@ -74,6 +76,8 @@ class FakeClient:
         self.changed_created_on_final = changed_created_on_final
         self.fail_reconcile = fail_reconcile
         self.wrong_created_path = wrong_created_path
+        self.third_party_remote_on_create_failure = third_party_remote_on_create_failure
+        self.mismatched_ambiguous_create = mismatched_ambiguous_create
         self.commands = []
         self.configs = {}
         self.deleted = []
@@ -110,8 +114,28 @@ class FakeClient:
             dashboard["id"] = f'{payload["url_path"]}-id'
             if payload["url_path"] == self.wrong_created_path:
                 dashboard["url_path"] = "wrong-returned-path"
+            if (
+                payload["url_path"] == self.fail_create_after_append
+                and self.mismatched_ambiguous_create
+            ):
+                dashboard["title"] = "Concurrent dashboard"
             self.dashboards.append(dashboard)
             if payload["url_path"] == self.fail_create_after_append:
+                if self.third_party_remote_on_create_failure:
+                    remote_entry = next(
+                        entry for entry in self.entries if entry["url_path"] == "luxury-remote"
+                    )
+                    self.dashboards.append(
+                        {
+                            "id": "third-party-remote-id",
+                            "url_path": remote_entry["url_path"],
+                            "title": remote_entry["title"],
+                            "icon": remote_entry["icon"],
+                            "mode": remote_entry["mode"],
+                            "show_in_sidebar": remote_entry["show_in_sidebar"],
+                            "require_admin": remote_entry["require_admin"],
+                        }
+                    )
                 self.create_failed = True
                 raise deploy_dashboards.DeploymentError(
                     f'create response lost for {payload["url_path"]}'
@@ -436,6 +460,53 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(client.deleted, ["luxury-garage-id", "luxury-home-id"])
         self.assertEqual(client.dashboards, [client.original])
         self.assertEqual(failure["status"], "rolled_back")
+
+    def test_reconciliation_ignores_third_party_on_unattempted_remote_path(self):
+        client = FakeClient(
+            self.entries,
+            fail_create_after_append="luxury-home",
+            third_party_remote_on_create_failure=True,
+        )
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(deploy_dashboards.DeploymentError):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(client.deleted, ["luxury-home-id"])
+        self.assertEqual(
+            [dashboard["id"] for dashboard in client.dashboards],
+            ["overview", "third-party-remote-id"],
+        )
+        self.assertEqual(failure["status"], "rolled_back")
+
+    def test_reconciliation_preserves_mismatched_attempted_path_for_manual_review(self):
+        client = FakeClient(
+            self.entries,
+            fail_create_after_append="luxury-home",
+            mismatched_ambiguous_create=True,
+        )
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(deploy_dashboards.DeploymentError):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(client.deleted, [])
+        self.assertEqual(
+            [dashboard["id"] for dashboard in client.dashboards],
+            ["overview", "luxury-home-id"],
+        )
+        self.assertEqual(failure["status"], "rollback_incomplete")
+        self.assertTrue(
+            any("manual reconciliation" in message.lower() for message in failure["rollback_errors"])
+        )
 
     def test_failed_rollback_reconciliation_is_recorded_incomplete(self):
         client = FakeClient(

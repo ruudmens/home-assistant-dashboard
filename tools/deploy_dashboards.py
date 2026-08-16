@@ -310,6 +310,7 @@ def deploy(client, entries, preflight_report, artifact_dir):
     )
 
     created = []
+    attempted = []
     operation = "dashboard deployment"
     try:
         for entry in entries:
@@ -323,6 +324,7 @@ def deploy(client, entries, preflight_report, artifact_dir):
                 "show_in_sidebar": entry["show_in_sidebar"],
                 "require_admin": entry["require_admin"],
             }
+            attempted.append(expected_dashboard)
             dashboard = client.command(
                 {
                     "type": "lovelace/dashboards/create",
@@ -390,7 +392,11 @@ def deploy(client, entries, preflight_report, artifact_dir):
         original_ids = {
             dashboard.get("id") for dashboard in original_dashboards if dashboard.get("id")
         }
-        target_paths = [entry["url_path"] for entry in entries]
+        attempted_by_path = {
+            expected_dashboard["url_path"]: expected_dashboard
+            for expected_dashboard in attempted
+        }
+        attempted_paths = list(attempted_by_path)
         rollback_candidates = {}
         for dashboard in created:
             dashboard_id = dashboard.get("id")
@@ -400,12 +406,26 @@ def deploy(client, entries, preflight_report, artifact_dir):
             reconciled_dashboards = client.command({"type": "lovelace/dashboards/list"})
             for dashboard in reconciled_dashboards:
                 dashboard_id = dashboard.get("id")
-                if dashboard.get("url_path") not in target_paths or dashboard_id in original_ids:
+                url_path = dashboard.get("url_path")
+                if url_path not in attempted_by_path or dashboard_id in original_ids:
+                    continue
+                if dashboard_id in rollback_candidates:
+                    continue
+                expected_dashboard = attempted_by_path[url_path]
+                metadata_matches = all(
+                    dashboard.get(field) == expected_value
+                    for field, expected_value in expected_dashboard.items()
+                )
+                if not metadata_matches:
+                    rollback_errors.append(
+                        "Dashboard metadata did not match attempted path "
+                        + f"{url_path}; manual reconciliation needed"
+                    )
                     continue
                 if not dashboard_id:
                     rollback_errors.append(
-                        "Cannot delete reconciled dashboard without ID at path "
-                        + str(dashboard.get("url_path"))
+                        "Cannot delete reconciled dashboard without ID at attempted path "
+                        + f"{url_path}; manual reconciliation needed"
                     )
                     continue
                 rollback_candidates[dashboard_id] = dashboard
@@ -415,7 +435,7 @@ def deploy(client, entries, preflight_report, artifact_dir):
         ordered_candidates = []
         ordered_candidate_ids = set()
         candidate_values = list(rollback_candidates.values())
-        for target_path in reversed(target_paths):
+        for target_path in reversed(attempted_paths):
             for dashboard in reversed(candidate_values):
                 if dashboard.get("url_path") == target_path:
                     ordered_candidates.append(dashboard)
