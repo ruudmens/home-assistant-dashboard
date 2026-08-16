@@ -59,6 +59,8 @@ RAW_CREDENTIAL_VALUE_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"(?<![A-Za-z0-9_])token\s*[:=]", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z0-9_])username\s*[:=]", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z0-9_])password\s*[:=]", re.IGNORECASE),
     re.compile(r"(?<![A-Za-z0-9_])HA_TOKEN(?![A-Za-z0-9_])", re.IGNORECASE),
     re.compile(r"(?<![A-Za-z0-9_])bearer\s+\S+", re.IGNORECASE),
     re.compile(
@@ -88,6 +90,7 @@ LIKELY_SECRET_KEYS = {
     "privatekey",
     "secret",
     "token",
+    "username",
     "webhooksecret",
 }
 FORBIDDEN_CONFIG_KEYS = {
@@ -174,10 +177,51 @@ class CameraContractHelperTests(unittest.TestCase):
                 }
             ],
         }
+        vertical_stack_header = {
+            "title": "Luxury Cameras",
+            "views": [
+                {
+                    "sections": [
+                        {
+                            "cards": [
+                                {
+                                    "type": "vertical-stack",
+                                    "cards": [
+                                        {"type": "markdown", "content": "Luxury Cameras"},
+                                        {"type": "markdown", "content": "17 cameras"},
+                                        {"type": "markdown", "content": "Scrypted NVR"},
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+        }
+        view_header_stack = {
+            "title": "Luxury Cameras",
+            "views": [
+                {
+                    "header": {
+                        "card": {
+                            "type": "custom:stack-in-card",
+                            "cards": [
+                                {"type": "markdown", "content": "Luxury Cameras"},
+                                {"type": "markdown", "content": "17 cameras"},
+                                {"type": "markdown", "content": "Scrypted NVR"},
+                            ],
+                        }
+                    },
+                    "sections": [],
+                }
+            ],
+        }
 
         self.assertEqual(matching_camera_headers(title_only), [])
         self.assertEqual(len(matching_camera_headers(section_header)), 1)
         self.assertEqual(len(matching_camera_headers(button_header)), 1)
+        self.assertEqual(len(matching_camera_headers(vertical_stack_header)), 1)
+        self.assertEqual(len(matching_camera_headers(view_header_stack)), 1)
         self.assertEqual(matching_camera_headers(scattered_header), [])
 
     def test_camera_pairing_requires_one_exact_label_and_camera_per_grid_item(self):
@@ -247,9 +291,14 @@ class CameraContractHelperTests(unittest.TestCase):
             {"apiKey": "example"},
             {"privateKey": "example"},
             {"accessToken": "example"},
+            {"username": "example"},
             {"content": "token=example"},
             {"content": "access_token: example"},
             {"content": "accessToken=example"},
+            {"content": "username: example"},
+            {"content": "username=example"},
+            {"content": "password: example"},
+            {"content": "password=example"},
             {"content": "HA_TOKEN"},
             {"content": "Authorization: Bearer example"},
             {"content": jwt_like},
@@ -440,10 +489,8 @@ def is_actual_card_mapping(value):
     card_type = value["type"].casefold()
     aggregate_types = {
         "grid",
-        "horizontal-stack",
-        "vertical-stack",
+        "sections",
         "custom:layout-card",
-        "custom:stack-in-card",
     }
     return card_type not in aggregate_types and "layout" not in card_type
 
@@ -469,7 +516,15 @@ def is_likely_secret_key(normalized):
     """Return whether a normalized key is intended to hold credentials."""
     return normalized in LIKELY_SECRET_KEYS or any(
         normalized.endswith(suffix)
-        for suffix in ("token", "password", "authorization", "apikey", "privatekey", "secret")
+        for suffix in (
+            "token",
+            "username",
+            "password",
+            "authorization",
+            "apikey",
+            "privatekey",
+            "secret",
+        )
     )
 
 
