@@ -777,6 +777,11 @@ class LuxuryCamerasTests(unittest.TestCase):
             )
             self.assertNotIn("speakerOn", card)
             self.assertNotIn("microphoneOn", card)
+            self.assertEqual(
+                card.get("style"),
+                "aspect-ratio: 16/9; border-radius: 16px; overflow: hidden;",
+                card.get("id"),
+            )
 
     def test_event_reel_includes_all_cameras_and_opens_home_assistant(self):
         carousels = [
@@ -807,6 +812,14 @@ class LuxuryCamerasTests(unittest.TestCase):
                         "grid-template-columns": "minmax(0, 1fr)"
                     },
                 },
+            )
+
+    def test_camera_grid_media_queries_are_phone_first(self):
+        self.assertEqual(len(self.camera_grids), 2)
+        for grid in self.camera_grids:
+            self.assertEqual(
+                list(grid["layout"]["mediaquery"]),
+                ["(max-width: 650px)", "(max-width: 1100px)"],
             )
 
     def test_navigation_destinations_are_exact(self):
