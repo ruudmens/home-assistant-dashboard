@@ -27,6 +27,14 @@ class DeploymentError(RuntimeError):
     """A safe, user-facing deployment failure."""
 
 
+class CommandRejectedError(DeploymentError):
+    """Home Assistant definitively rejected a correlated command."""
+
+
+class AmbiguousCommandError(DeploymentError):
+    """A command may have committed before its outcome became unavailable."""
+
+
 def _redact(message, *secrets):
     safe_message = str(message)
     for secret in secrets:
@@ -180,23 +188,44 @@ class HomeAssistantWebSocket:
         message = dict(payload)
         message["id"] = command_id
         try:
-            self.connection.send(json.dumps(message))
+            encoded_message = json.dumps(message)
+        except Exception:
+            raise DeploymentError(
+                f"Home Assistant command {command_name} could not be encoded"
+            ) from None
+        try:
+            self.connection.send(encoded_message)
+        except Exception:
+            raise AmbiguousCommandError(
+                f"Home Assistant command {command_name} send failed; outcome is unknown"
+            ) from None
+        try:
             while True:
                 response = self._receive()
                 if response.get("id") == command_id:
                     break
-        except DeploymentError:
-            raise
         except Exception:
-            raise DeploymentError(f"Home Assistant command {command_name} failed") from None
+            raise AmbiguousCommandError(
+                f"Home Assistant command {command_name} response was lost; outcome is unknown"
+            ) from None
         if response.get("type") != "result":
-            raise DeploymentError(f"Home Assistant command {command_name} returned no result")
-        if not response.get("success"):
+            raise AmbiguousCommandError(
+                f"Home Assistant command {command_name} returned an invalid result; "
+                + "outcome is unknown"
+            )
+        if response.get("success") is False:
             error = response.get("error") or {}
+            if not isinstance(error, dict):
+                error = {}
             code = _redact(error.get("code", "unknown_error"), self.token)
             detail = _redact(error.get("message", "command failed"), self.token)
-            raise DeploymentError(
+            raise CommandRejectedError(
                 f"Home Assistant command {command_name} failed: {code}: {detail}"
+            )
+        if response.get("success") is not True or "result" not in response:
+            raise AmbiguousCommandError(
+                f"Home Assistant command {command_name} returned an incomplete result; "
+                + "outcome is unknown"
             )
         return response.get("result")
 
@@ -311,6 +340,7 @@ def deploy(client, entries, preflight_report, artifact_dir):
 
     created = []
     attempted = []
+    ambiguous_creates = []
     operation = "dashboard deployment"
     try:
         for entry in entries:
@@ -325,14 +355,19 @@ def deploy(client, entries, preflight_report, artifact_dir):
                 "require_admin": entry["require_admin"],
             }
             attempted.append(expected_dashboard)
-            dashboard = client.command(
-                {
-                    "type": "lovelace/dashboards/create",
-                    **expected_dashboard,
-                }
-            )
+            try:
+                dashboard = client.command(
+                    {
+                        "type": "lovelace/dashboards/create",
+                        **expected_dashboard,
+                    }
+                )
+            except AmbiguousCommandError:
+                ambiguous_creates.append(expected_dashboard)
+                raise
             if not isinstance(dashboard, dict) or not dashboard.get("id"):
-                raise DeploymentError("Dashboard creation returned no dashboard ID")
+                ambiguous_creates.append(expected_dashboard)
+                raise AmbiguousCommandError("Dashboard creation returned no dashboard ID")
             created.append(dashboard)
             if any(
                 dashboard.get(field) != expected_value
@@ -396,7 +431,11 @@ def deploy(client, entries, preflight_report, artifact_dir):
             expected_dashboard["url_path"]: expected_dashboard
             for expected_dashboard in attempted
         }
-        attempted_paths = list(attempted_by_path)
+        ambiguous_by_path = {
+            expected_dashboard["url_path"]: attempted_by_path[expected_dashboard["url_path"]]
+            for expected_dashboard in ambiguous_creates
+        }
+        ambiguous_paths = list(ambiguous_by_path)
         rollback_candidates = {}
         for dashboard in created:
             dashboard_id = dashboard.get("id")
@@ -407,11 +446,11 @@ def deploy(client, entries, preflight_report, artifact_dir):
             for dashboard in reconciled_dashboards:
                 dashboard_id = dashboard.get("id")
                 url_path = dashboard.get("url_path")
-                if url_path not in attempted_by_path or dashboard_id in original_ids:
+                if url_path not in ambiguous_by_path or dashboard_id in original_ids:
                     continue
                 if dashboard_id in rollback_candidates:
                     continue
-                expected_dashboard = attempted_by_path[url_path]
+                expected_dashboard = ambiguous_by_path[url_path]
                 metadata_matches = all(
                     dashboard.get(field) == expected_value
                     for field, expected_value in expected_dashboard.items()
@@ -435,7 +474,7 @@ def deploy(client, entries, preflight_report, artifact_dir):
         ordered_candidates = []
         ordered_candidate_ids = set()
         candidate_values = list(rollback_candidates.values())
-        for target_path in reversed(attempted_paths):
+        for target_path in reversed(ambiguous_paths):
             for dashboard in reversed(candidate_values):
                 if dashboard.get("url_path") == target_path:
                     ordered_candidates.append(dashboard)

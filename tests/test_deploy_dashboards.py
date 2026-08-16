@@ -40,6 +40,8 @@ class FakeClient:
         wrong_created_path=None,
         third_party_remote_on_create_failure=False,
         mismatched_ambiguous_create=False,
+        definitive_rejection_with_third_party=None,
+        malformed_create_success=None,
     ):
         self.entries = entries
         self.original = {
@@ -78,6 +80,8 @@ class FakeClient:
         self.wrong_created_path = wrong_created_path
         self.third_party_remote_on_create_failure = third_party_remote_on_create_failure
         self.mismatched_ambiguous_create = mismatched_ambiguous_create
+        self.definitive_rejection_with_third_party = definitive_rejection_with_third_party
+        self.malformed_create_success = malformed_create_success
         self.commands = []
         self.configs = {}
         self.deleted = []
@@ -112,6 +116,13 @@ class FakeClient:
             dashboard = dict(payload)
             dashboard.pop("type")
             dashboard["id"] = f'{payload["url_path"]}-id'
+            if payload["url_path"] == self.definitive_rejection_with_third_party:
+                third_party = dict(dashboard)
+                third_party["id"] = f'third-party-{payload["url_path"]}-id'
+                self.dashboards.append(third_party)
+                raise deploy_dashboards.CommandRejectedError(
+                    "url_already_exists: dashboard route already exists"
+                )
             if payload["url_path"] == self.wrong_created_path:
                 dashboard["url_path"] = "wrong-returned-path"
             if (
@@ -137,9 +148,13 @@ class FakeClient:
                         }
                     )
                 self.create_failed = True
-                raise deploy_dashboards.DeploymentError(
+                raise deploy_dashboards.AmbiguousCommandError(
                     f'create response lost for {payload["url_path"]}'
                 )
+            if payload["url_path"] == self.malformed_create_success:
+                malformed_response = dict(dashboard)
+                malformed_response.pop("id")
+                return malformed_response
             return dict(dashboard)
         if command_type == "lovelace/config/save":
             if payload["url_path"] == self.unexpected_save:
@@ -460,6 +475,42 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(client.deleted, ["luxury-garage-id", "luxury-home-id"])
         self.assertEqual(client.dashboards, [client.original])
         self.assertEqual(failure["status"], "rolled_back")
+
+    def test_definitive_create_rejection_never_deletes_identical_third_party(self):
+        client = FakeClient(
+            self.entries,
+            definitive_rejection_with_third_party="luxury-home",
+        )
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                deploy_dashboards.DeploymentError, "url_already_exists"
+            ):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+            failure = json.loads(
+                (Path(temp_dir) / "deployment-failure.json").read_text(encoding="utf-8")
+            )
+        self.assertEqual(client.deleted, [])
+        self.assertEqual(
+            [dashboard["id"] for dashboard in client.dashboards],
+            ["overview", "third-party-luxury-home-id"],
+        )
+        self.assertEqual(failure["status"], "rolled_back")
+
+    def test_malformed_successful_create_is_reconciled_as_ambiguous(self):
+        client = FakeClient(self.entries, malformed_create_success="luxury-home")
+        report = deploy_dashboards.preflight(
+            client, "https://ha.example.test", TOKEN, self.entries, lambda *_: True
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                deploy_dashboards.DeploymentError, "no dashboard ID"
+            ):
+                deploy_dashboards.deploy(client, self.entries, report, Path(temp_dir))
+        self.assertEqual(client.deleted, ["luxury-home-id"])
+        self.assertEqual(client.dashboards, [client.original])
 
     def test_reconciliation_ignores_third_party_on_unattempted_remote_path(self):
         client = FakeClient(
@@ -818,12 +869,44 @@ class WebSocketTests(unittest.TestCase):
             with deploy_dashboards.HomeAssistantWebSocket(
                 "https://ha.example.test", TOKEN
             ) as client:
-                with self.assertRaises(deploy_dashboards.DeploymentError) as raised:
+                with self.assertRaises(deploy_dashboards.CommandRejectedError) as raised:
                     client.command({"type": "lovelace/config/save"})
         message = str(raised.exception)
         self.assertIn("lovelace/config/save", message)
         self.assertIn("invalid_format", message)
         self.assertNotIn(TOKEN, message)
+
+    def test_receive_loss_after_command_send_is_ambiguous_and_safe(self):
+        connection = FakeConnection(
+            [{"type": "auth_required"}, {"type": "auth_ok"}]
+        )
+        with mock.patch.object(
+            deploy_dashboards.websocket, "create_connection", return_value=connection
+        ):
+            with deploy_dashboards.HomeAssistantWebSocket(
+                "https://ha.example.test", TOKEN
+            ) as client:
+                with self.assertRaises(deploy_dashboards.AmbiguousCommandError) as raised:
+                    client.command({"type": "lovelace/dashboards/create"})
+        self.assertIn("outcome is unknown", str(raised.exception))
+        self.assertNotIn(TOKEN, str(raised.exception))
+
+    def test_correlated_result_missing_success_is_ambiguous(self):
+        connection = FakeConnection(
+            [
+                {"type": "auth_required"},
+                {"type": "auth_ok"},
+                {"id": 1, "type": "result", "result": {}},
+            ]
+        )
+        with mock.patch.object(
+            deploy_dashboards.websocket, "create_connection", return_value=connection
+        ):
+            with deploy_dashboards.HomeAssistantWebSocket(
+                "https://ha.example.test", TOKEN
+            ) as client:
+                with self.assertRaises(deploy_dashboards.AmbiguousCommandError):
+                    client.command({"type": "lovelace/dashboards/create"})
 
 
 class CliTests(unittest.TestCase):
