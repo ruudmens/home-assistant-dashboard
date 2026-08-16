@@ -74,6 +74,7 @@ def walk(value: Any) -> Iterator[dict | list]:
 
 def iter_lovelace_cards(config: dict) -> Iterator[tuple[str, dict]]:
     """Yield every section card and nested card with its stable Lovelace path."""
+    seen_card_ids: set[int] = set()
     for view_index, view in enumerate(config.get("views", [])):
         if not isinstance(view, dict):
             continue
@@ -83,18 +84,34 @@ def iter_lovelace_cards(config: dict) -> Iterator[tuple[str, dict]]:
             for card_index, card in enumerate(section.get("cards", [])):
                 if isinstance(card, dict):
                     path = f"views[{view_index}].sections[{section_index}].cards[{card_index}]"
-                    yield from _iter_card_tree(card, path)
+                    yield from _iter_card_tree(card, path, seen_card_ids)
 
 
-def _iter_card_tree(card: dict, path: str) -> Iterator[tuple[str, dict]]:
-    """Yield a card followed by the cards in its nested ``cards`` lists."""
+def _iter_card_tree(card: dict, path: str, seen_card_ids: set[int]) -> Iterator[tuple[str, dict]]:
+    """Yield a card and its embedded child-card configurations exactly once."""
+    card_id = id(card)
+    if card_id in seen_card_ids:
+        return
+    seen_card_ids.add(card_id)
     yield path, card
     nested_cards = card.get("cards", [])
-    if not isinstance(nested_cards, list):
+    if isinstance(nested_cards, list):
+        for card_index, nested_card in enumerate(nested_cards):
+            if isinstance(nested_card, dict):
+                yield from _iter_card_tree(nested_card, f"{path}.cards[{card_index}]", seen_card_ids)
+    singular_card = card.get("card")
+    if isinstance(singular_card, dict):
+        yield from _iter_card_tree(singular_card, f"{path}.card", seen_card_ids)
+    custom_fields = card.get("custom_fields", {})
+    if not isinstance(custom_fields, dict):
         return
-    for card_index, nested_card in enumerate(nested_cards):
-        if isinstance(nested_card, dict):
-            yield from _iter_card_tree(nested_card, f"{path}.cards[{card_index}]")
+    for field_name, field_config in custom_fields.items():
+        if not isinstance(field_config, dict):
+            continue
+        embedded_card = field_config.get("card")
+        if isinstance(embedded_card, dict):
+            embedded_path = f"{path}.custom_fields.{field_name}.card"
+            yield from _iter_card_tree(embedded_card, embedded_path, seen_card_ids)
 
 
 def explicit_action_records(config: dict) -> list[dict]:

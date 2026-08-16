@@ -371,6 +371,18 @@ class LuxuryRemoteTests(unittest.TestCase):
         )
         self.assertNotEqual(card_inventory(nested_markdown), EXACT_CARD_INVENTORY)
 
+        singular_wrapper = deepcopy(self.config)
+        singular_wrapper["views"][0]["sections"][3]["cards"][1]["card"] = {
+            "type": "markdown",
+            "content": "Wrapped card",
+        }
+        wrapper_inventory = card_inventory(singular_wrapper)
+        self.assertNotEqual(wrapper_inventory, EXACT_CARD_INVENTORY)
+        self.assertIn(
+            ("views[0].sections[3].cards[1].card", "markdown", None, None, None),
+            wrapper_inventory,
+        )
+
     def test_explicit_action_records_are_exact_and_reject_nested_device_target(self):
         self.assertEqual(config_assertions.explicit_action_records(self.config), EXACT_ACTION_RECORDS)
 
@@ -389,6 +401,62 @@ class LuxuryRemoteTests(unittest.TestCase):
         self.assertEqual(config_assertions.action_contract_violations(nested_device_target), [])
         self.assertNotEqual(
             config_assertions.explicit_action_records(nested_device_target), EXACT_ACTION_RECORDS
+        )
+
+    def test_embedded_custom_field_actions_are_in_the_exact_recursive_inventory(self):
+        custom_field_device_target = deepcopy(self.config)
+        custom_field_device_target["views"][0]["sections"][0]["cards"][1]["custom_fields"] = {
+            "danger": {
+                "card": {
+                    "type": "button",
+                    "tap_action": {
+                        "action": "perform-action",
+                        "perform_action": "script.turn_on",
+                        "target": {"device_id": "unrelated-device"},
+                    },
+                }
+            }
+        }
+        self.assertEqual(config_assertions.action_contract_violations(custom_field_device_target), [])
+        custom_field_inventory = card_inventory(custom_field_device_target)
+        self.assertNotEqual(custom_field_inventory, EXACT_CARD_INVENTORY)
+        self.assertIn(
+            (
+                "views[0].sections[0].cards[1].custom_fields.danger.card",
+                "button",
+                None,
+                None,
+                None,
+            ),
+            custom_field_inventory,
+        )
+        custom_field_actions = config_assertions.explicit_action_records(custom_field_device_target)
+        self.assertNotEqual(
+            custom_field_actions, EXACT_ACTION_RECORDS
+        )
+        self.assertIn(
+            action_record(
+                "views[0].sections[0].cards[1].custom_fields.danger.card",
+                "tap_action",
+                "perform-action",
+                perform_action="script.turn_on",
+                device_id="unrelated-device",
+            ),
+            custom_field_actions,
+        )
+
+    def test_recursive_card_iterator_deduplicates_overlapping_embedded_cards(self):
+        overlapping_cards = deepcopy(self.config)
+        shared_card = {"type": "markdown", "content": "Shared card"}
+        alarmo = overlapping_cards["views"][0]["sections"][0]["cards"][1]
+        alarmo["card"] = shared_card
+        alarmo["custom_fields"] = {"danger": {"card": shared_card}}
+        shared_inventory = [
+            card for card in card_inventory(overlapping_cards) if card[1] == "markdown"
+        ]
+        self.assertEqual(
+            shared_inventory,
+            [("views[0].sections[0].cards[1].card", "markdown", None, None, None)],
         )
 
     def test_comfort_uses_ecobee_thermostat_and_compact_daily_weather(self):
