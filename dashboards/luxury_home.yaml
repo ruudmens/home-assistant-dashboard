@@ -25,33 +25,30 @@ views:
     header:
       layout: responsive
       badges_position: bottom
-      cards:
-        - type: markdown
-          content: |
-            # Luxury Home
-
-            A calm view of the people, comfort, and energy that make home.
-          card_mod:
-            style: |
-              ha-card {
-                background: transparent;
-                border: 0;
-                color: #f6f3ec;
-              }
+      card:
+        type: markdown
+        content: |
+          # Luxury Home
+          A calm view of the people, comfort, and energy that make home.
+        card_mod:
+          style: |
+            ha-card {
+              background: transparent;
+              border: 0;
+              color: #f6f3ec;
+            }
     sections:
       - type: grid
         column_span: 2
-        card_mod:
-          style: |
-            :host {
-              background: rgba(23, 26, 25, 0.92);
-            }
+        background:
+          color: '#171a19'
+          opacity: 92
         cards:
           - type: heading
             heading: At a glance
             icon: mdi:weather-partly-cloudy
           - type: clock
-            clock_type: digital
+            clock_style: digital
             clock_size: large
             show_seconds: false
             time_format: '12'
@@ -73,11 +70,9 @@ views:
             name: Indoor humidity
       - type: grid
         column_span: 2
-        card_mod:
-          style: |
-            :host {
-              background: rgba(28, 26, 22, 0.90);
-            }
+        background:
+          color: '#1c1a16'
+          opacity: 90
         cards:
           - type: heading
             heading: Scenes
@@ -128,11 +123,9 @@ views:
               target:
                 entity_id: scene.goodbye
       - type: grid
-        card_mod:
-          style: |
-            :host {
-              background: rgba(23, 26, 25, 0.90);
-            }
+        background:
+          color: '#171a19'
+          opacity: 90
         cards:
           - type: heading
             heading: Lighting
@@ -174,11 +167,9 @@ views:
             name: Garage
             color: amber
       - type: grid
-        card_mod:
-          style: |
-            :host {
-              background: rgba(28, 26, 22, 0.90);
-            }
+        background:
+          color: '#1c1a16'
+          opacity: 90
         cards:
           - type: heading
             heading: Energy
@@ -211,11 +202,9 @@ views:
               - entity: sensor.envoy_202308085399_current_power_production
                 name: Production
       - type: grid
-        card_mod:
-          style: |
-            :host {
-              background: rgba(23, 26, 25, 0.90);
-            }
+        background:
+          color: '#171a19'
+          opacity: 90
         cards:
           - type: heading
             heading: Media
@@ -237,11 +226,9 @@ views:
                 entity: input_number.radio_volume
                 name: Radio volume
       - type: grid
-        card_mod:
-          style: |
-            :host {
-              background: rgba(28, 26, 22, 0.90);
-            }
+        background:
+          color: '#1c1a16'
+          opacity: 90
         cards:
           - type: heading
             heading: Security & presence
@@ -302,11 +289,9 @@ views:
             name: Kcam
       - type: grid
         column_span: 2
-        card_mod:
-          style: |
-            :host {
-              background: rgba(23, 26, 25, 0.88);
-            }
+        background:
+          color: '#171a19'
+          opacity: 88
         cards:
           - type: heading
             heading: Dashboards

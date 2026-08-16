@@ -55,6 +55,45 @@ class LuxuryHomeTests(unittest.TestCase):
     def test_uses_two_column_responsive_sections(self):
         assert_sections_view(self, self.config, max_columns=2)
 
+    def test_header_and_clock_use_native_lovelace_schema(self):
+        view = self.config["views"][0]
+        header = view["header"]
+        self.assertIn("card", header)
+        self.assertNotIn("cards", header)
+        self.assertEqual(
+            header["card"]["content"],
+            "# Luxury Home\nA calm view of the people, comfort, and energy that make home.\n",
+        )
+        clock = next(
+            card
+            for section in view["sections"]
+            for card in section["cards"]
+            if card["type"] == "clock"
+        )
+        self.assertEqual(clock.get("clock_style"), "digital")
+        self.assertNotIn("clock_type", clock)
+
+    def test_sections_use_ordered_native_backgrounds(self):
+        self.assertEqual(
+            [
+                {
+                    "color": section["background"]["color"],
+                    "opacity": section["background"]["opacity"],
+                    "column_span": section.get("column_span"),
+                }
+                for section in self.config["views"][0]["sections"]
+            ],
+            [
+                {"color": "#171a19", "opacity": 92, "column_span": 2},
+                {"color": "#1c1a16", "opacity": 90, "column_span": 2},
+                {"color": "#171a19", "opacity": 90, "column_span": None},
+                {"color": "#1c1a16", "opacity": 90, "column_span": None},
+                {"color": "#171a19", "opacity": 90, "column_span": None},
+                {"color": "#1c1a16", "opacity": 90, "column_span": None},
+                {"color": "#171a19", "opacity": 88, "column_span": 2},
+            ],
+        )
+
     def test_references_only_expected_entities(self):
         self.assertEqual(referenced_entities(self.config), EXPECTED)
 
