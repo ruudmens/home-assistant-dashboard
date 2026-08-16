@@ -29,20 +29,50 @@ def walk(value: Any) -> Iterator[dict | list]:
 
 
 def referenced_entities(config: dict) -> set[str]:
-    """Return valid entity IDs used under entity, entity_id, and entities keys."""
-    entities: set[str] = set()
-    for node in walk(config):
-        if not isinstance(node, dict):
-            continue
-        for key in ("entity", "entity_id", "entities"):
-            value = node.get(key)
-            values = value if isinstance(value, list) else [value]
-            entities.update(
-                entity_id
-                for entity_id in values
-                if isinstance(entity_id, str) and ENTITY_ID.fullmatch(entity_id)
-            )
-    return entities
+    """Return entity IDs while excluding action and service names."""
+    return set(_entity_references(config))
+
+
+def _entity_references(value: Any, owning_key: str | None = None) -> Iterator[str]:
+    """Yield entity-like scalars except service identifiers in action mappings."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from _entity_references(child, key)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _entity_references(child, owning_key)
+    elif (
+        isinstance(value, str)
+        and owning_key not in {"perform_action", "service"}
+        and ENTITY_ID.fullmatch(value)
+    ):
+        yield value
+
+
+def unsafe_status_only_card_violations(card: dict) -> list[str]:
+    """Return unsafe action channels or cover references on a status-only card."""
+    violations: list[str] = []
+    for key, value in card.items():
+        if key.endswith("_action"):
+            action = value.get("action") if isinstance(value, dict) else None
+            if action not in {"more-info", "none"}:
+                violations.append(f"{key} action {action!r} is unsafe")
+    for scalar in _scalar_values(card):
+        if scalar.startswith("cover."):
+            violations.append(f"cover reference {scalar!r} is unsafe")
+    return violations
+
+
+def _scalar_values(value: Any) -> Iterator[str]:
+    """Yield strings from a nested configuration value."""
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from _scalar_values(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _scalar_values(child)
+    elif isinstance(value, str):
+        yield value
 
 
 def cards_for_entity(config: dict, entity_id: str) -> list[dict]:

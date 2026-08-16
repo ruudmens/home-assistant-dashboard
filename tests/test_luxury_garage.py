@@ -1,5 +1,6 @@
 """Contract tests for the safe Luxury Garage dashboard."""
 
+from copy import deepcopy
 from pathlib import Path
 import unittest
 
@@ -8,6 +9,7 @@ from tests.config_assertions import (
     cards_for_entity,
     load_config,
     referenced_entities,
+    unsafe_status_only_card_violations,
 )
 
 
@@ -61,6 +63,14 @@ class LuxuryGarageTests(unittest.TestCase):
     def test_references_only_expected_entities(self):
         self.assertEqual(referenced_entities(self.config), EXPECTED)
 
+    def test_referenced_entities_collects_media_entities_but_not_service_names(self):
+        config = {
+            "camera_image": "camera.garage",
+            "tap_action": {"perform_action": "camera.snapshot"},
+            "service": "scene.turn_on",
+        }
+        self.assertEqual(referenced_entities(config), {"camera.garage"})
+
     def test_garage_door_status_card_is_safe_and_state_colored(self):
         card = cards_for_entity(
             self.config, "binary_sensor.lumi_lumi_sensor_magnet_aq2_a84a2103_on_off"
@@ -69,10 +79,31 @@ class LuxuryGarageTests(unittest.TestCase):
         self.assertTrue(card["show_state"])
         self.assertEqual(card["tap_action"]["action"], "more-info")
         self.assertNotIn("features", card)
+        self.assertEqual(unsafe_status_only_card_violations(card), [])
         self.assertEqual(
             {state["value"]: state["color"] for state in card["state"]},
             {"off": "#a7c7a0", "on": "#d88d75", "unavailable": "#777972"},
         )
+
+    def test_status_only_card_rejects_unsafe_actions_and_cover_references(self):
+        door = cards_for_entity(
+            self.config, "binary_sensor.lumi_lumi_sensor_magnet_aq2_a84a2103_on_off"
+        )[0]
+        with_unsafe_hold = deepcopy(door)
+        with_unsafe_hold["hold_action"] = {"action": "toggle"}
+        self.assertIn(
+            "hold_action action 'toggle' is unsafe",
+            unsafe_status_only_card_violations(with_unsafe_hold),
+        )
+
+        with_cover_command = deepcopy(door)
+        with_cover_command["tap_action"] = {
+            "action": "perform-action",
+            "perform_action": "cover.toggle",
+        }
+        violations = unsafe_status_only_card_violations(with_cover_command)
+        self.assertIn("tap_action action 'perform-action' is unsafe", violations)
+        self.assertIn("cover reference 'cover.toggle' is unsafe", violations)
 
     def test_snapshot_is_the_sole_script_card_and_runs_itself(self):
         cards = cards_for_entity(self.config, "script.1645405163026")
