@@ -40,7 +40,7 @@ EXPECTED = {
     "script.radio_play",
     "input_number.radio_volume",
     "alarm_control_panel.alarmo",
-    "lock.virtual_front_door_lock",
+    "lock.level_lock_pro",
     "lock.back_door",
     "sensor.car_presence",
     "person.kcam",
@@ -211,7 +211,7 @@ class LuxuryHomeTests(unittest.TestCase):
     def test_security_controls_require_confirmation(self):
         for entity_id in (
             "alarm_control_panel.alarmo",
-            "lock.virtual_front_door_lock",
+            "lock.level_lock_pro",
             "lock.back_door",
         ):
             cards = cards_for_entity(self.config, entity_id)
@@ -250,7 +250,7 @@ class LuxuryHomeTests(unittest.TestCase):
             "unlocking": "#d5b77a",
             "unavailable": "#777972",
         }
-        for entity_id in ("lock.virtual_front_door_lock", "lock.back_door"):
+        for entity_id in ("lock.level_lock_pro", "lock.back_door"):
             lock = cards_for_entity(self.config, entity_id)[0]
             self.assertEqual(lock["tap_action"]["action"], "toggle")
             self.assertTrue(lock["tap_action"]["confirmation"])

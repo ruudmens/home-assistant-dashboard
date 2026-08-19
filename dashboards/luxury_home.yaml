@@ -275,7 +275,7 @@ views:
                 title: Security
                 text: Open alarm controls?
           - type: custom:button-card
-            entity: lock.virtual_front_door_lock
+            entity: lock.level_lock_pro
             name: Front door
             show_state: true
             state:
